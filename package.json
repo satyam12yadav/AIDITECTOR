@@ -4,8 +4,10 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "start": "node dist-server/index.js",
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "tsc && vite build && tsc -p tsconfig.server.json",
+    "client:build": "tsc && vite build",
     "preview": "vite preview",
     "server:dev": "tsx watch server/src/index.ts",
     "server:build": "tsc -p tsconfig.server.json",

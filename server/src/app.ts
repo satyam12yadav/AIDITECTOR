@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import express, { Express } from 'express';
 import cors from 'cors';
 import { env } from './config/env.js';
@@ -37,20 +39,32 @@ export const createApp = (): Express => {
   app.use(express.json({ limit: '5mb' }));
   app.use(express.urlencoded({ extended: true, limit: '5mb' }));
 
-  // Root welcome / index
-  app.get('/', (_req, res) => {
-    res.status(200).json({
-      service: 'Fake News Killer Backend API',
-      status: 'active',
-      endpoints: {
-        health: '/api/health',
-        analyze: '/api/analyze (POST)',
-      },
-    });
-  });
-
   // Mount API Router
   app.use('/api', apiRouter);
+
+  // Serve Frontend Static Files in Production if dist folder exists
+  const distPath = path.resolve(process.cwd(), 'dist');
+  if (fs.existsSync(distPath)) {
+    app.use(express.static(distPath));
+    app.get('*', (req, res, next) => {
+      if (req.path.startsWith('/api')) {
+        return next();
+      }
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
+  } else {
+    // Root welcome / index for standalone API mode
+    app.get('/', (_req, res) => {
+      res.status(200).json({
+        service: 'Fake News Killer Backend API',
+        status: 'active',
+        endpoints: {
+          health: '/api/health',
+          analyze: '/api/analyze (POST)',
+        },
+      });
+    });
+  }
 
   // 404 Not Found Handler for unhandled routes
   app.use(notFoundHandler);
