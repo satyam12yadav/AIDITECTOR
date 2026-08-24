@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fake News Killer — Veritas Protocol</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <!-- Header -->
+    <header class="header">
+      <div class="brand">
+        <div class="logo-icon">🛡️</div>
+        <div>
+          <h1 class="brand-title">Fake News Killer</h1>
+          <p class="brand-subtitle">Veritas Forensic Protocol</p>
+        </div>
+      </div>
+      <span class="status-indicator live" title="Backend Connected">LIVE</span>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="content">
+      <!-- 1. READY STATE -->
+      <section id="state-ready" class="view-state active">
+        <div class="card target-card">
+          <div class="card-label">CURRENT PAGE</div>
+          <h2 id="page-title" class="target-title">Detecting active page...</h2>
+          <div id="page-url" class="target-url">https://...</div>
+        </div>
+
+        <div class="action-wrapper">
+          <button id="btn-analyze" class="btn btn-primary btn-large">
+            <span class="btn-icon">⚡</span>
+            <span>Analyze This Article</span>
+          </button>
+        </div>
+
+        <div class="info-note">
+          <span>AI-assisted 5-pillar forensic verification.</span>
+        </div>
+      </section>
+
+      <!-- 2. LOADING STATE -->
+      <section id="state-loading" class="view-state">
+        <div class="loading-header">
+          <div class="spinner"></div>
+          <h2 class="loading-title">Analyzing article...</h2>
+          <p class="loading-subtitle">Verifying claims across primary source indices</p>
+        </div>
+
+        <div class="stepper">
+          <div class="step step-done" id="step-1">
+            <div class="step-bullet">✓</div>
+            <div class="step-text">Article extracted</div>
+          </div>
+          <div class="step step-done" id="step-2">
+            <div class="step-bullet">✓</div>
+            <div class="step-text">Claims identified</div>
+          </div>
+          <div class="step step-active" id="step-3">
+            <div class="step-bullet">⏳</div>
+            <div class="step-text">Checking evidence</div>
+          </div>
+          <div class="step step-pending" id="step-4">
+            <div class="step-bullet">⏳</div>
+            <div class="step-text">Calculating credibility</div>
+          </div>
+        </div>
+
+        <button id="btn-cancel" class="btn btn-secondary btn-sm">Cancel</button>
+      </section>
+
+      <!-- 3. RESULTS STATE -->
+      <section id="state-results" class="view-state">
+        <!-- Score & Verdict Banner -->
+        <div class="score-card">
+          <div class="score-radial-wrapper">
+            <div class="score-radial">
+              <span id="res-score" class="score-number">78</span>
+              <span class="score-denom">/100</span>
+            </div>
+          </div>
+          <div class="verdict-wrapper">
+            <div class="verdict-label-header">VERDICT</div>
+            <div id="res-verdict" class="verdict-badge probably-credible">Probably Credible</div>
+            <div class="confidence-text">
+              Confidence: <strong id="res-confidence">84%</strong>
+            </div>
+          </div>
+        </div>
+
+        <!-- Claims Summary Grid -->
+        <div class="claims-grid">
+          <div class="claim-stat">
+            <span class="claim-stat-num" id="stat-total">3</span>
+            <span class="claim-stat-lbl">Claims Checked</span>
+          </div>
+          <div class="claim-stat text-success">
+            <span class="claim-stat-num text-success" id="stat-supported">2</span>
+            <span class="claim-stat-lbl">Supported</span>
+          </div>
+          <div class="claim-stat text-danger">
+            <span class="claim-stat-num text-danger" id="stat-contradicted">0</span>
+            <span class="claim-stat-lbl">Contradicted</span>
+          </div>
+          <div class="claim-stat text-warning">
+            <span class="claim-stat-num text-warning" id="stat-unverified">1</span>
+            <span class="claim-stat-lbl">Unverified</span>
+          </div>
+        </div>
+
+        <!-- Diagnostic Summary -->
+        <div class="summary-box">
+          <div class="summary-title">Summary & Evidence</div>
+          <p id="res-summary" class="summary-text">
+            Deterministic credibility score synthesized across independent wire and institutional databases.
+          </p>
+        </div>
+
+        <!-- View Full Analysis Action -->
+        <div class="action-wrapper">
+          <button id="btn-view-full" class="btn btn-primary">
+            <span>View Full Analysis</span>
+            <span class="btn-icon">↗</span>
+          </button>
+          <button id="btn-reanalyze" class="btn btn-secondary btn-sm">Re-analyze</button>
+        </div>
+      </section>
+
+      <!-- 4. ERROR STATE -->
+      <section id="state-error" class="view-state">
+        <div class="error-box">
+          <div class="error-icon">⚠️</div>
+          <h2 id="error-title" class="error-title">Analysis Failed</h2>
+          <p id="error-message" class="error-message">Could not connect to the Fake News Killer backend.</p>
+          <div id="error-code" class="error-code">BACKEND_UNAVAILABLE</div>
+        </div>
+
+        <div class="action-wrapper">
+          <button id="btn-retry" class="btn btn-primary">Try Again</button>
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <span>VERITAS PROTOCOL v1.0</span>
+      <a href="http://localhost:3000" target="_blank" class="footer-link">Open Dashboard</a>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

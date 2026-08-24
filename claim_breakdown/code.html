@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Claim Analysis - Fake News Killer</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "on-surface-variant": "#45464d",
+                        "outline": "#76777d",
+                        "tertiary": "#000000",
+                        "surface-container-highest": "#e0e3e5",
+                        "surface-container": "#eceef0",
+                        "on-secondary-fixed": "#0d1c2f",
+                        "on-primary-fixed": "#131b2e",
+                        "on-tertiary-fixed": "#271901",
+                        "on-tertiary-fixed-variant": "#574425",
+                        "on-secondary-fixed-variant": "#3a485c",
+                        "on-background": "#191c1e",
+                        "surface-container-lowest": "#ffffff",
+                        "tertiary-fixed-dim": "#dec29a",
+                        "error": "#ba1a1a",
+                        "primary-fixed-dim": "#bec6e0",
+                        "inverse-surface": "#2d3133",
+                        "primary": "#000000",
+                        "primary-fixed": "#dae2fd",
+                        "on-primary-container": "#7c839b",
+                        "on-error-container": "#93000a",
+                        "tertiary-fixed": "#fcdeb5",
+                        "surface-container-low": "#f2f4f6",
+                        "on-tertiary-container": "#98805d",
+                        "surface-variant": "#e0e3e5",
+                        "inverse-on-surface": "#eff1f3",
+                        "primary-container": "#131b2e",
+                        "background": "#f7f9fb",
+                        "secondary-container": "#d5e3fd",
+                        "surface-container-high": "#e6e8ea",
+                        "on-primary-fixed-variant": "#3f465c",
+                        "outline-variant": "#c6c6cd",
+                        "tertiary-container": "#271901",
+                        "surface-dim": "#d8dadc",
+                        "on-tertiary": "#ffffff",
+                        "secondary": "#515f74",
+                        "on-primary": "#ffffff",
+                        "on-surface": "#191c1e",
+                        "secondary-fixed": "#d5e3fd",
+                        "on-secondary": "#ffffff",
+                        "on-error": "#ffffff",
+                        "error-container": "#ffdad6",
+                        "inverse-primary": "#bec6e0",
+                        "secondary-fixed-dim": "#b9c7e0",
+                        "on-secondary-container": "#57657b",
+                        "surface-bright": "#f7f9fb",
+                        "surface-tint": "#565e74",
+                        "surface": "#f7f9fb"
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    spacing: {
+                        "margin-desktop": "64px",
+                        "container-max": "1280px",
+                        "margin-mobile": "16px",
+                        "unit": "4px",
+                        "gutter": "24px"
+                    },
+                    fontFamily: {
+                        "label-caps": ["Inter"],
+                        "label-code": ["JetBrains Mono"],
+                        "body-base": ["Inter"],
+                        "body-sm": ["Inter"],
+                        "headline-lg": ["Inter"],
+                        "headline-lg-mobile": ["Inter"],
+                        "headline-md": ["Inter"]
+                    },
+                    fontSize: {
+                        "label-caps": ["12px", { lineHeight: "1.0", letterSpacing: "0.1em", fontWeight: "700" }],
+                        "label-code": ["12px", { lineHeight: "1.0", letterSpacing: "0.05em", fontWeight: "500" }],
+                        "body-base": ["16px", { lineHeight: "1.6", fontWeight: "400" }],
+                        "body-sm": ["14px", { lineHeight: "1.5", fontWeight: "400" }],
+                        "headline-lg": ["48px", { lineHeight: "1.1", letterSpacing: "-0.02em", fontWeight: "700" }],
+                        "headline-lg-mobile": ["32px", { lineHeight: "1.2", fontWeight: "700" }],
+                        "headline-md": ["24px", { lineHeight: "1.3", letterSpacing: "-0.01em", fontWeight: "600" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body { background-color: theme('colors.background'); }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+        .material-symbols-outlined.fill { font-variation-settings: 'FILL' 1; }
+    </style>
+</head>
+<body class="antialiased text-on-surface">
+<div class="flex min-h-screen">
+<!-- SideNavBar (Desktop) -->
+<aside class="bg-surface-container-low hidden lg:flex flex-col h-screen sticky top-0 w-64 border-r border-outline-variant shrink-0">
+<div class="p-6 border-b border-outline-variant flex flex-col gap-4">
+<div class="font-headline-md text-headline-md text-primary">Fake News Killer</div>
+<button class="bg-primary text-on-primary font-label-caps text-label-caps py-3 px-4 rounded w-full flex items-center justify-center gap-2 hover:opacity-90 transition-opacity">
+<span class="material-symbols-outlined text-[16px]">add</span>
+                New Analysis
+            </button>
+</div>
+<div class="p-4 border-b border-outline-variant flex items-center gap-3">
+<div class="w-10 h-10 rounded-full bg-surface-container-high flex items-center justify-center shrink-0 overflow-hidden">
+<img alt="User Profile" class="w-full h-full object-cover" data-alt="A highly detailed close up portrait of an institutional investigator looking sharp and focused in a modern, starkly lit high-tech environment. The style is hyper-realistic photography with cool blue and white tones to emphasize the forensic aesthetic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAWRSCUHL_BJ_gWL0nU3lHcLI0yYScDlZWdOGLAOUomn4O4AHLLH0IK95GySNDh7uhNVRPo6VMg5TekRh1ECwE3yBoEWAAycygd2mAwWRHHszIB-nrHIkDgTR0v0lNEo7lDu04Hs1lDMDjwqmjblsIgXe7ecLjDg_oR7AtGNwGmG_biKs1ZNozkOtaZ30Qgk2PPMkhaZz9yY_2U_w2iw5ScpxUD7Pf5ZtuKnDgd7uGNDrWyHVYwpsxJUg"/>
+</div>
+<div>
+<div class="font-label-caps text-label-caps text-on-surface">Investigator</div>
+<div class="font-label-code text-label-code text-on-surface-variant mt-1">Institutional Access</div>
+</div>
+</div>
+<nav class="flex-1 py-4 flex flex-col gap-1 px-2">
+<!-- Active: Analysis -->
+<a class="bg-primary-container text-on-primary-container font-label-caps text-label-caps border-l-4 border-primary px-4 py-3 flex items-center gap-3 transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined text-[20px]">fact_check</span>
+                Analysis
+            </a>
+<a class="text-on-surface-variant hover:bg-surface-variant font-label-caps text-label-caps px-4 py-3 border-l-4 border-transparent flex items-center gap-3 transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined text-[20px]">menu_book</span>
+                Sources
+            </a>
+<a class="text-on-surface-variant hover:bg-surface-variant font-label-caps text-label-caps px-4 py-3 border-l-4 border-transparent flex items-center gap-3 transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined text-[20px]">assessment</span>
+                Reports
+            </a>
+<a class="text-on-surface-variant hover:bg-surface-variant font-label-caps text-label-caps px-4 py-3 border-l-4 border-transparent flex items-center gap-3 transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined text-[20px]">settings</span>
+                Settings
+            </a>
+<a class="text-on-surface-variant hover:bg-surface-variant font-label-caps text-label-caps px-4 py-3 border-l-4 border-transparent flex items-center gap-3 transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined text-[20px]">help</span>
+                Help
+            </a>
+</nav>
+<div class="p-4 mt-auto border-t border-outline-variant">
+<a class="text-on-surface-variant hover:bg-surface-variant font-label-caps text-label-caps px-4 py-3 border-l-4 border-transparent flex items-center gap-3 transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined text-[20px]">logout</span>
+                Logout
+            </a>
+</div>
+</aside>
+<!-- Main Content Canvas -->
+<main class="flex-1 flex flex-col min-w-0">
+<!-- TopAppBar (Mobile Fallback) -->
+<header class="bg-background flex justify-between items-center w-full px-margin-mobile md:px-margin-desktop h-16 border-b border-outline-variant lg:hidden">
+<div class="font-headline-md text-headline-md font-bold text-primary">Fake News Killer</div>
+<button class="font-label-caps text-label-caps text-primary border border-outline-variant px-4 py-2 rounded flex items-center gap-2">
+                Verify Now
+            </button>
+</header>
+<!-- Content Area -->
+<div class="flex-1 overflow-auto">
+<div class="px-margin-mobile md:px-margin-desktop py-8 max-w-container-max mx-auto">
+<div class="mb-12 flex flex-col md:flex-row md:items-end justify-between gap-4">
+<div>
+<h1 class="font-headline-lg-mobile md:font-headline-lg text-headline-lg-mobile md:text-headline-lg text-on-surface mb-2">Claim Analysis</h1>
+<p class="font-body-base text-body-base text-on-surface-variant max-w-2xl">Forensic breakdown of statements cross-referenced against institutional databases.</p>
+</div>
+<div class="flex gap-2">
+<button class="px-4 py-2 border border-outline-variant rounded font-label-code text-label-code text-on-surface-variant hover:bg-surface-variant transition-colors flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px]">filter_list</span> Filter
+                        </button>
+<button class="px-4 py-2 border border-outline-variant rounded font-label-code text-label-code text-on-surface-variant hover:bg-surface-variant transition-colors flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px]">download</span> Export
+                        </button>
+</div>
+</div>
+<div class="flex flex-col gap-8">
+<!-- Claim Card 1: Contradicted -->
+<div class="bg-surface-container-lowest border border-outline-variant rounded shadow-[0_4px_20px_rgba(15,23,42,0.02)] overflow-hidden">
+<div class="p-6 md:p-8 border-b border-outline-variant flex flex-col md:flex-row justify-between items-start gap-4">
+<div class="max-w-3xl">
+<div class="font-label-code text-label-code text-outline mb-3">CLAIM IDENTIFIER: CL-4921-A</div>
+<h2 class="font-headline-md text-headline-md text-on-surface">"The proposed law will increase taxes by 40% for the middle class."</h2>
+</div>
+<div class="shrink-0 mt-1">
+<span class="bg-error-container text-on-error-container font-label-caps text-label-caps px-4 py-2 rounded flex items-center gap-2 border border-[#ffb4ab]">
+<span class="material-symbols-outlined text-[16px] fill">cancel</span>
+                                    Contradicted
+                                </span>
+</div>
+</div>
+<div class="bg-surface-bright p-6 md:p-8">
+<h3 class="font-label-caps text-label-caps text-on-surface-variant mb-6 flex items-center gap-2">
+<span class="material-symbols-outlined text-[18px]">policy</span>
+                                Evidence &amp; Sourcing
+                            </h3>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<!-- Evidence Card -->
+<div class="border-l-4 border-error pl-5 py-2 bg-surface-container-lowest border-y border-r border-outline-variant p-4">
+<div class="flex flex-wrap items-center gap-3 mb-3">
+<span class="font-label-code text-label-code text-on-surface font-bold">Associated Press</span>
+<span class="bg-surface-container-highest text-on-surface-variant font-label-code text-[10px] px-2 py-1 rounded">Highly Reliable</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant mb-4 italic">"Financial analysts confirm the maximum tax increase is capped at 4% under the revised stipulations of Section 12-B..."</p>
+<a class="font-label-code text-label-code text-primary underline hover:opacity-80 transition-opacity inline-flex items-center gap-1" href="#">
+                                        View Source <span class="material-symbols-outlined text-[14px]">open_in_new</span>
+</a>
+</div>
+<!-- Evidence Card -->
+<div class="border-l-4 border-error pl-5 py-2 bg-surface-container-lowest border-y border-r border-outline-variant p-4">
+<div class="flex flex-wrap items-center gap-3 mb-3">
+<span class="font-label-code text-label-code text-on-surface font-bold">Congressional Budget Office</span>
+<span class="bg-surface-container-highest text-on-surface-variant font-label-code text-[10px] px-2 py-1 rounded">Primary Source</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant mb-4 italic">"Projections indicate a negligible median increase of 3.8% for households within the targeted income bracket."</p>
+<a class="font-label-code text-label-code text-primary underline hover:opacity-80 transition-opacity inline-flex items-center gap-1" href="#">
+                                        View Source <span class="material-symbols-outlined text-[14px]">open_in_new</span>
+</a>
+</div>
+</div>
+</div>
+</div>
+<!-- Claim Card 2: Supported -->
+<div class="bg-surface-container-lowest border border-outline-variant rounded shadow-[0_4px_20px_rgba(15,23,42,0.02)] overflow-hidden">
+<div class="p-6 md:p-8 border-b border-outline-variant flex flex-col md:flex-row justify-between items-start gap-4">
+<div class="max-w-3xl">
+<div class="font-label-code text-label-code text-outline mb-3">CLAIM IDENTIFIER: CL-4922-B</div>
+<h2 class="font-headline-md text-headline-md text-on-surface">"Global supply chain disruptions have increased localized shipping costs by 18% year-over-year."</h2>
+</div>
+<div class="shrink-0 mt-1">
+<span class="bg-secondary-container text-on-secondary-container font-label-caps text-label-caps px-4 py-2 rounded flex items-center gap-2 border border-[#a8c7fa]">
+<span class="material-symbols-outlined text-[16px] fill">check_circle</span>
+                                    Supported
+                                </span>
+</div>
+</div>
+<div class="bg-surface-bright p-6 md:p-8">
+<h3 class="font-label-caps text-label-caps text-on-surface-variant mb-6 flex items-center gap-2">
+<span class="material-symbols-outlined text-[18px]">policy</span>
+                                Evidence &amp; Sourcing
+                            </h3>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<!-- Evidence Card -->
+<div class="border-l-4 border-secondary pl-5 py-2 bg-surface-container-lowest border-y border-r border-outline-variant p-4">
+<div class="flex flex-wrap items-center gap-3 mb-3">
+<span class="font-label-code text-label-code text-on-surface font-bold">Logistics Quarterly Review</span>
+<span class="bg-surface-container-highest text-on-surface-variant font-label-code text-[10px] px-2 py-1 rounded">Industry Standard</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant mb-4 italic">"Data aggregated from major North American ports demonstrates an exact 18.2% spike in localized final-mile delivery tariffs."</p>
+<a class="font-label-code text-label-code text-primary underline hover:opacity-80 transition-opacity inline-flex items-center gap-1" href="#">
+                                        View Source <span class="material-symbols-outlined text-[14px]">open_in_new</span>
+</a>
+</div>
+</div>
+</div>
+</div>
+<!-- Claim Card 3: Unverified -->
+<div class="bg-surface-container-lowest border border-outline-variant rounded shadow-[0_4px_20px_rgba(15,23,42,0.02)] overflow-hidden">
+<div class="p-6 md:p-8 border-b border-outline-variant flex flex-col md:flex-row justify-between items-start gap-4">
+<div class="max-w-3xl">
+<div class="font-label-code text-label-code text-outline mb-3">CLAIM IDENTIFIER: CL-4923-C</div>
+<h2 class="font-headline-md text-headline-md text-on-surface">"A new internal memo shows corporate executives knew about the structural flaws since 2018."</h2>
+</div>
+<div class="shrink-0 mt-1">
+<span class="bg-surface-container-highest text-on-surface-variant font-label-caps text-label-caps px-4 py-2 rounded flex items-center gap-2 border border-outline-variant">
+<span class="material-symbols-outlined text-[16px] fill">help</span>
+                                    Unverified
+                                </span>
+</div>
+</div>
+<div class="bg-surface-bright p-6 md:p-8">
+<h3 class="font-label-caps text-label-caps text-on-surface-variant mb-6 flex items-center gap-2">
+<span class="material-symbols-outlined text-[18px]">policy</span>
+                                Evidence &amp; Sourcing
+                            </h3>
+<div class="grid grid-cols-1 gap-6">
+<!-- Evidence Card -->
+<div class="border-l-4 border-outline pl-5 py-2 bg-surface-container-lowest border-y border-r border-outline-variant p-4">
+<div class="flex flex-wrap items-center gap-3 mb-3">
+<span class="font-label-code text-label-code text-on-surface font-bold">Anonymous Leaker (via Social Media)</span>
+<span class="bg-surface-container-highest text-outline font-label-code text-[10px] px-2 py-1 rounded">Low Reliability</span>
+</div>
+<p class="font-body-sm text-body-sm text-on-surface-variant mb-4 italic">"I have seen the emails myself, they knew in 2018."</p>
+<p class="font-label-code text-label-code text-error mb-4">Note: Unable to authenticate documents referenced in social media post. Institutional confirmation pending.</p>
+<button class="font-label-code text-label-code text-outline opacity-50 cursor-not-allowed inline-flex items-center gap-1">
+                                        Source Unavailable <span class="material-symbols-outlined text-[14px]">lock</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Footer -->
+<footer class="w-full py-8 px-margin-mobile md:px-margin-desktop flex flex-col md:flex-row justify-between items-center bg-surface-container-highest border-t border-outline-variant mt-12 gap-4">
+<div class="font-label-caps text-label-caps font-bold text-on-surface-variant">© 2024 Fake News Killer. Forensic Analysis Division.</div>
+<div class="flex gap-6 font-label-code text-label-code text-on-surface-variant">
+<a class="hover:text-primary transition-opacity" href="#">Privacy Policy</a>
+<a class="hover:text-primary transition-opacity" href="#">Terms of Service</a>
+<a class="hover:text-primary transition-opacity" href="#">Verification Standards</a>
+</div>
+</footer>
+</div>
+</main>
+</div>
+</body></html>

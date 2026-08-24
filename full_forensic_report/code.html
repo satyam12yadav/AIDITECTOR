@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Detailed Analysis Report - Fake News Killer</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&amp;family=JetBrains+Mono:wght@500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-surface-variant": "#45464d",
+                        "outline": "#76777d",
+                        "tertiary": "#000000",
+                        "surface-container-highest": "#e0e3e5",
+                        "surface-container": "#eceef0",
+                        "on-secondary-fixed": "#0d1c2f",
+                        "on-primary-fixed": "#131b2e",
+                        "on-tertiary-fixed": "#271901",
+                        "on-tertiary-fixed-variant": "#574425",
+                        "on-secondary-fixed-variant": "#3a485c",
+                        "on-background": "#191c1e",
+                        "surface-container-lowest": "#ffffff",
+                        "tertiary-fixed-dim": "#dec29a",
+                        "error": "#ba1a1a",
+                        "primary-fixed-dim": "#bec6e0",
+                        "inverse-surface": "#2d3133",
+                        "primary": "#000000",
+                        "primary-fixed": "#dae2fd",
+                        "on-primary-container": "#7c839b",
+                        "on-error-container": "#93000a",
+                        "tertiary-fixed": "#fcdeb5",
+                        "surface-container-low": "#f2f4f6",
+                        "on-tertiary-container": "#98805d",
+                        "surface-variant": "#e0e3e5",
+                        "inverse-on-surface": "#eff1f3",
+                        "primary-container": "#131b2e",
+                        "background": "#f7f9fb",
+                        "secondary-container": "#d5e3fd",
+                        "surface-container-high": "#e6e8ea",
+                        "on-primary-fixed-variant": "#3f465c",
+                        "outline-variant": "#c6c6cd",
+                        "tertiary-container": "#271901",
+                        "surface-dim": "#d8dadc",
+                        "on-tertiary": "#ffffff",
+                        "secondary": "#515f74",
+                        "on-primary": "#ffffff",
+                        "on-surface": "#191c1e",
+                        "secondary-fixed": "#d5e3fd",
+                        "on-secondary": "#ffffff",
+                        "on-error": "#ffffff",
+                        "error-container": "#ffdad6",
+                        "inverse-primary": "#bec6e0",
+                        "secondary-fixed-dim": "#b9c7e0",
+                        "on-secondary-container": "#57657b",
+                        "surface-bright": "#f7f9fb",
+                        "surface-tint": "#565e74",
+                        "surface": "#f7f9fb"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "margin-desktop": "64px",
+                        "container-max": "1280px",
+                        "margin-mobile": "16px",
+                        "unit": "4px",
+                        "gutter": "24px"
+                    },
+                    "fontFamily": {
+                        "label-caps": ["Inter"],
+                        "label-code": ["JetBrains Mono"],
+                        "body-base": ["Inter"],
+                        "body-sm": ["Inter"],
+                        "headline-lg": ["Inter"],
+                        "headline-lg-mobile": ["Inter"],
+                        "headline-md": ["Inter"]
+                    },
+                    "fontSize": {
+                        "label-caps": ["12px", { "lineHeight": "1.0", "letterSpacing": "0.1em", "fontWeight": "700" }],
+                        "label-code": ["12px", { "lineHeight": "1.0", "letterSpacing": "0.05em", "fontWeight": "500" }],
+                        "body-base": ["16px", { "lineHeight": "1.6", "fontWeight": "400" }],
+                        "body-sm": ["14px", { "lineHeight": "1.5", "fontWeight": "400" }],
+                        "headline-lg": ["48px", { "lineHeight": "1.1", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "headline-lg-mobile": ["32px", { "lineHeight": "1.2", "fontWeight": "700" }],
+                        "headline-md": ["24px", { "lineHeight": "1.3", "letterSpacing": "-0.01em", "fontWeight": "600" }]
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-background text-on-background font-body-base antialiased min-h-screen flex">
+<!-- SideNavBar -->
+<nav class="hidden lg:flex flex-col h-screen sticky top-0 bg-surface-container-low dark:bg-surface-container-lowest text-primary dark:text-on-background font-label-caps text-label-caps w-64 border-r border-outline-variant shrink-0">
+<div class="p-6">
+<h1 class="font-headline-md text-headline-md text-primary mb-8">Fake News Killer</h1>
+<div class="flex items-center gap-3 mb-8">
+<div class="w-10 h-10 rounded-full bg-surface-variant overflow-hidden shrink-0">
+<img class="w-full h-full object-cover" data-alt="A professional headshot of a data analyst or journalist in a brightly lit, modern office environment. The lighting is soft and neutral, emphasizing a clinical and trustworthy appearance. The image should feature a clean, white and slate color palette, consistent with a modern light-mode UI design. The mood is serious and focused." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBymLw8yOQ4deUhRqOemn_eLhRaAXkDuBAYw2Eeq7t3ZVURZdsD-9O08-caJnXo9gl77zF5X0H3B136cdQ4AD7yoFSkTe2JODRDGtJnMEeDqcBLAdF5NW-Vo2Nte-1vV4z71HaqTHqwoiGWEti2lMBhraD7cGKhpSwaNfauwUrTJcIlPvVFk4034gM9RXtViFFHdXRDGj98ww5PETfGtcXYZ7w6xjUDjf_nYbb-wzeFIVTBL9_IIcEO6g"/>
+</div>
+<div>
+<div class="font-bold text-on-surface">Investigator</div>
+<div class="text-[10px] text-on-surface-variant mt-1">Institutional Access</div>
+</div>
+</div>
+<button class="w-full bg-primary text-on-primary py-3 px-4 rounded font-label-caps text-label-caps hover:bg-on-surface-variant transition-colors mb-8">
+                New Analysis
+            </button>
+</div>
+<ul class="flex-1 overflow-y-auto px-4 space-y-1">
+<!-- Active Tab: Analysis -->
+<li>
+<a class="flex items-center gap-3 px-4 py-3 rounded bg-primary-container text-on-primary-container font-bold border-l-4 border-primary duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">fact_check</span>
+                    Analysis
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-3 rounded text-on-surface-variant hover:bg-surface-variant hover:bg-surface-container-high transition-all duration-200 ease-in-out border-l-4 border-transparent" href="#">
+<span class="material-symbols-outlined">menu_book</span>
+                    Sources
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-3 rounded text-on-surface-variant hover:bg-surface-variant hover:bg-surface-container-high transition-all duration-200 ease-in-out border-l-4 border-transparent" href="#">
+<span class="material-symbols-outlined">assessment</span>
+                    Reports
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-3 rounded text-on-surface-variant hover:bg-surface-variant hover:bg-surface-container-high transition-all duration-200 ease-in-out border-l-4 border-transparent" href="#">
+<span class="material-symbols-outlined">settings</span>
+                    Settings
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-4 py-3 rounded text-on-surface-variant hover:bg-surface-variant hover:bg-surface-container-high transition-all duration-200 ease-in-out border-l-4 border-transparent" href="#">
+<span class="material-symbols-outlined">help</span>
+                    Help
+                </a>
+</li>
+</ul>
+<div class="p-4 mt-auto border-t border-outline-variant">
+<a class="flex items-center gap-3 px-4 py-3 rounded text-on-surface-variant hover:bg-surface-variant hover:bg-surface-container-high transition-all duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined">logout</span>
+                Logout
+            </a>
+</div>
+</nav>
+<!-- Main Content Area -->
+<main class="flex-1 w-full flex flex-col min-h-screen max-w-container-max mx-auto overflow-hidden">
+<!-- TopAppBar (Mobile Fallback / Supplemental) -->
+<header class="flex lg:hidden justify-between items-center w-full px-margin-mobile h-16 bg-background border-b border-outline-variant shrink-0">
+<div class="font-headline-md text-headline-md font-bold text-primary">Fake News Killer</div>
+<button class="material-symbols-outlined text-primary">menu</button>
+</header>
+<div class="flex-1 overflow-y-auto px-margin-mobile md:px-margin-desktop py-8 md:py-12 flex flex-col items-center">
+<!-- Document Container -->
+<article class="w-full max-w-4xl bg-surface-container-lowest border border-outline-variant shadow-sm rounded-DEFAULT relative overflow-hidden">
+<!-- Top Accent Line (Credibility Indicator - Warning/Moderate) -->
+<div class="h-1 w-full bg-[#f59e0b] absolute top-0 left-0"></div>
+<div class="p-8 md:p-12">
+<!-- Header Section -->
+<header class="mb-12 border-b border-outline-variant pb-8">
+<div class="flex items-center gap-2 mb-6">
+<span class="inline-flex items-center px-2 py-1 rounded bg-[#fef3c7] text-[#92400e] font-label-code text-label-code border border-[#fcd34d]">
+                                CREDIBILITY SCORE: 64/100
+                            </span>
+<span class="text-on-surface-variant font-label-caps text-label-caps ml-auto">
+                                ID: FNK-2024-893A
+                            </span>
+</div>
+<h1 class="font-headline-lg-mobile md:font-headline-lg text-on-background mb-4 text-balance">
+                            New Study Claims Daily Coffee Consumption Reverses Aging Process in Adults Over 50
+                        </h1>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8 font-label-code text-label-code text-on-surface-variant">
+<div>
+<div class="text-outline mb-1 uppercase text-[10px] tracking-wider">Publisher</div>
+<div class="text-on-background font-bold">Health &amp; Wellness Daily</div>
+</div>
+<div>
+<div class="text-outline mb-1 uppercase text-[10px] tracking-wider">Author</div>
+<div class="text-on-background">Dr. S. Jenkins (Unverified)</div>
+</div>
+<div>
+<div class="text-outline mb-1 uppercase text-[10px] tracking-wider">Date Analyzed</div>
+<div class="text-on-background">2024-10-27 14:32 UTC</div>
+</div>
+</div>
+</header>
+<!-- Summary Section -->
+<section class="mb-12">
+<h2 class="font-headline-md text-headline-md mb-4 flex items-center gap-2">
+<span class="material-symbols-outlined text-outline">psychology</span>
+                            Executive Summary
+                        </h2>
+<div class="bg-surface-container p-6 rounded-DEFAULT border border-outline-variant text-on-surface">
+<p class="mb-4">
+                                The article presents a heavily sensationalized interpretation of a legitimate but limited observational study. While the foundational research exists, the author drastically exaggerates the findings, equating "reduced oxidative stress markers" with "reversing the aging process."
+                            </p>
+<p>
+                                Key issues identified include the misrepresentation of causal relationships, reliance on a single unverified expert quote, and failure to mention the study's small sample size (n=45). The overall tone is designed for engagement rather than factual reporting.
+                            </p>
+</div>
+</section>
+<!-- Bento Grid for Claims & Evidence -->
+<section class="mb-12">
+<h2 class="font-headline-md text-headline-md mb-6 border-b border-outline-variant pb-2">Forensic Breakdown</h2>
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+<!-- Extracted Claims -->
+<div class="bg-background border border-outline-variant rounded-DEFAULT p-6">
+<h3 class="font-label-caps text-label-caps text-outline mb-4">Extracted Claims</h3>
+<ul class="space-y-4">
+<li class="flex gap-3 items-start pb-4 border-b border-outline-variant border-dashed last:border-0 last:pb-0">
+<span class="material-symbols-outlined text-error mt-0.5" style="font-variation-settings: 'FILL' 1;">cancel</span>
+<div>
+<p class="font-bold text-sm mb-1">"Coffee reverses aging."</p>
+<p class="text-xs text-on-surface-variant font-label-code">Flagged: Hyperbolic/False Equivalence</p>
+</div>
+</li>
+<li class="flex gap-3 items-start pb-4 border-b border-outline-variant border-dashed last:border-0 last:pb-0">
+<span class="material-symbols-outlined text-[#f59e0b] mt-0.5" style="font-variation-settings: 'FILL' 1;">warning</span>
+<div>
+<p class="font-bold text-sm mb-1">"Study proves 3 cups daily is optimal."</p>
+<p class="text-xs text-on-surface-variant font-label-code">Flagged: Misrepresented Sample Data</p>
+</div>
+</li>
+<li class="flex gap-3 items-start">
+<span class="material-symbols-outlined text-[#10b981] mt-0.5" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+<div>
+<p class="font-bold text-sm mb-1">"Coffee contains antioxidants."</p>
+<p class="text-xs text-on-surface-variant font-label-code">Verified Fact</p>
+</div>
+</li>
+</ul>
+</div>
+<!-- Source Reliability Card -->
+<div class="bg-surface-container-low border border-outline-variant rounded-DEFAULT p-0 overflow-hidden flex flex-col">
+<div class="bg-surface-variant px-6 py-3 border-b border-outline-variant flex justify-between items-center">
+<h3 class="font-label-caps text-label-caps text-on-surface">Source Profile</h3>
+<span class="material-symbols-outlined text-outline text-sm">lan</span>
+</div>
+<div class="p-6 flex-1 flex flex-col justify-center items-center text-center">
+<div class="w-16 h-16 rounded-full border border-outline-variant flex items-center justify-center bg-surface-container mb-4">
+<span class="material-symbols-outlined text-3xl text-outline">public</span>
+</div>
+<div class="font-bold text-lg mb-1">Health &amp; Wellness Daily</div>
+<div class="text-sm text-on-surface-variant mb-4">Domain Reputation: Marginal</div>
+<div class="w-full bg-surface-container h-2 rounded-full overflow-hidden mb-2">
+<div class="bg-[#f59e0b] h-full w-[45%]"></div>
+</div>
+<div class="w-full flex justify-between text-[10px] font-label-code text-outline uppercase">
+<span>Low Trust</span>
+<span>45/100</span>
+<span>High Trust</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+</div>
+</article>
+</div>
+<!-- Footer -->
+<footer class="w-full py-8 px-margin-mobile md:px-margin-desktop flex flex-col md:flex-row justify-between items-center bg-surface-container-highest dark:bg-surface-container text-on-surface-variant dark:text-on-surface-variant font-label-code text-label-code border-t border-outline-variant shrink-0 mt-auto">
+<div class="font-label-caps text-label-caps font-bold mb-4 md:mb-0 text-center md:text-left">
+                © 2024 Fake News Killer. Forensic Analysis Division.
+            </div>
+<div class="flex gap-6">
+<a class="hover:text-primary transition-opacity underline" href="#">Privacy Policy</a>
+<a class="hover:text-primary transition-opacity underline" href="#">Terms of Service</a>
+<a class="hover:text-primary transition-opacity underline" href="#">Verification Standards</a>
+</div>
+</footer>
+</main>
+</body></html>

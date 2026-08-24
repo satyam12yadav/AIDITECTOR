@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Fake News Killer - Analysis Loading</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&amp;family=JetBrains+Mono:wght@500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-surface-variant": "#45464d",
+                        "outline": "#76777d",
+                        "tertiary": "#000000",
+                        "surface-container-highest": "#e0e3e5",
+                        "surface-container": "#eceef0",
+                        "on-secondary-fixed": "#0d1c2f",
+                        "on-primary-fixed": "#131b2e",
+                        "on-tertiary-fixed": "#271901",
+                        "on-tertiary-fixed-variant": "#574425",
+                        "on-secondary-fixed-variant": "#3a485c",
+                        "on-background": "#191c1e",
+                        "surface-container-lowest": "#ffffff",
+                        "tertiary-fixed-dim": "#dec29a",
+                        "error": "#ba1a1a",
+                        "primary-fixed-dim": "#bec6e0",
+                        "inverse-surface": "#2d3133",
+                        "primary": "#000000",
+                        "primary-fixed": "#dae2fd",
+                        "on-primary-container": "#7c839b",
+                        "on-error-container": "#93000a",
+                        "tertiary-fixed": "#fcdeb5",
+                        "surface-container-low": "#f2f4f6",
+                        "on-tertiary-container": "#98805d",
+                        "surface-variant": "#e0e3e5",
+                        "inverse-on-surface": "#eff1f3",
+                        "primary-container": "#131b2e",
+                        "background": "#f7f9fb",
+                        "secondary-container": "#d5e3fd",
+                        "surface-container-high": "#e6e8ea",
+                        "on-primary-fixed-variant": "#3f465c",
+                        "outline-variant": "#c6c6cd",
+                        "tertiary-container": "#271901",
+                        "surface-dim": "#d8dadc",
+                        "on-tertiary": "#ffffff",
+                        "secondary": "#515f74",
+                        "on-primary": "#ffffff",
+                        "on-surface": "#191c1e",
+                        "secondary-fixed": "#d5e3fd",
+                        "on-secondary": "#ffffff",
+                        "on-error": "#ffffff",
+                        "error-container": "#ffdad6",
+                        "inverse-primary": "#bec6e0",
+                        "secondary-fixed-dim": "#b9c7e0",
+                        "on-secondary-container": "#57657b",
+                        "surface-bright": "#f7f9fb",
+                        "surface-tint": "#565e74",
+                        "surface": "#f7f9fb"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "margin-desktop": "64px",
+                        "container-max": "1280px",
+                        "margin-mobile": "16px",
+                        "unit": "4px",
+                        "gutter": "24px"
+                    },
+                    "fontFamily": {
+                        "label-caps": ["Inter"],
+                        "label-code": ["JetBrains Mono"],
+                        "body-base": ["Inter"],
+                        "body-sm": ["Inter"],
+                        "headline-lg": ["Inter"],
+                        "headline-lg-mobile": ["Inter"],
+                        "headline-md": ["Inter"]
+                    },
+                    "fontSize": {
+                        "label-caps": ["12px", { "lineHeight": "1.0", "letterSpacing": "0.1em", "fontWeight": "700" }],
+                        "label-code": ["12px", { "lineHeight": "1.0", "letterSpacing": "0.05em", "fontWeight": "500" }],
+                        "body-base": ["16px", { "lineHeight": "1.6", "fontWeight": "400" }],
+                        "body-sm": ["14px", { "lineHeight": "1.5", "fontWeight": "400" }],
+                        "headline-lg": ["48px", { "lineHeight": "1.1", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "headline-lg-mobile": ["32px", { "lineHeight": "1.2", "fontWeight": "700" }],
+                        "headline-md": ["24px", { "lineHeight": "1.3", "letterSpacing": "-0.01em", "fontWeight": "600" }]
+                    },
+                    "animation": {
+                        "pulse-fast": "pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+                    }
+                },
+            }
+        }
+    </script>
+<style>
+        body {
+            background-color: #f7f9fb;
+            color: #191c1e;
+        }
+        
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid #c6c6cd;
+        }
+
+        .step-line {
+            position: absolute;
+            left: 11px;
+            top: 24px;
+            bottom: -8px;
+            width: 2px;
+            background-color: #e0e3e5;
+            z-index: 0;
+        }
+        
+        .step-line.active {
+            background-color: #000000;
+        }
+
+        .step-indicator {
+            position: relative;
+            z-index: 1;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col font-body-base text-body-base bg-background relative overflow-hidden">
+<!-- Ambient Background Effect -->
+<div class="absolute inset-0 pointer-events-none opacity-20">
+<div class="absolute top-1/4 left-1/4 w-96 h-96 bg-primary-container rounded-full blur-[100px] animate-pulse-fast"></div>
+<div class="absolute bottom-1/4 right-1/4 w-96 h-96 bg-secondary-container rounded-full blur-[100px] animate-pulse-fast" style="animation-delay: 0.5s;"></div>
+</div>
+<!-- Navigation suppressed due to linear/transactional loading state -->
+<!-- Main Content Canvas -->
+<main class="flex-grow flex items-center justify-center p-margin-mobile md:p-margin-desktop relative z-10">
+<div class="w-full max-w-[600px] glass-panel rounded-xl shadow-[0_4px_20px_rgba(15,23,42,0.08)] p-8 md:p-12">
+<div class="text-center mb-10">
+<span class="material-symbols-outlined text-4xl text-primary mb-4 block" style="font-variation-settings: 'FILL' 1;">
+                    data_exploration
+                </span>
+<h1 class="font-headline-md text-headline-md text-on-surface mb-2">Forensic Analysis in Progress</h1>
+<p class="font-body-sm text-body-sm text-on-surface-variant">The AI is currently evaluating the submitted evidence. Please do not close this window.</p>
+</div>
+<!-- Analysis Steps -->
+<div class="space-y-6 relative">
+<!-- Step 1: Completed -->
+<div class="flex items-start group relative">
+<div class="step-line active"></div>
+<div class="step-indicator flex-shrink-0 w-6 h-6 rounded-full bg-primary flex items-center justify-center mt-1 mr-4 border-2 border-primary">
+<span class="material-symbols-outlined text-on-primary text-[14px]" style="font-variation-settings: 'FILL' 1;">
+                            check
+                        </span>
+</div>
+<div>
+<h3 class="font-label-caps text-label-caps text-on-surface mb-1">Extracting Article</h3>
+<p class="font-label-code text-label-code text-on-surface-variant">Data successfully parsed and structured.</p>
+</div>
+</div>
+<!-- Step 2: Completed -->
+<div class="flex items-start group relative">
+<div class="step-line active"></div>
+<div class="step-indicator flex-shrink-0 w-6 h-6 rounded-full bg-primary flex items-center justify-center mt-1 mr-4 border-2 border-primary">
+<span class="material-symbols-outlined text-on-primary text-[14px]" style="font-variation-settings: 'FILL' 1;">
+                            check
+                        </span>
+</div>
+<div>
+<h3 class="font-label-caps text-label-caps text-on-surface mb-1">Identifying Claims</h3>
+<p class="font-label-code text-label-code text-on-surface-variant">32 distinct verifiable claims extracted.</p>
+</div>
+</div>
+<!-- Step 3: Active -->
+<div class="flex items-start group relative">
+<div class="step-line"></div>
+<div class="step-indicator flex-shrink-0 w-6 h-6 rounded-full bg-surface flex items-center justify-center mt-1 mr-4 border-2 border-primary relative">
+<div class="absolute inset-0 rounded-full border-2 border-primary animate-ping opacity-75"></div>
+<div class="w-2 h-2 rounded-full bg-primary"></div>
+</div>
+<div>
+<h3 class="font-label-caps text-label-caps text-primary mb-1">Checking Evidence</h3>
+<p class="font-label-code text-label-code text-on-surface-variant animate-pulse">Cross-referencing claims against trusted institutional databases...</p>
+</div>
+</div>
+<!-- Step 4: Pending -->
+<div class="flex items-start group relative">
+<div class="step-line"></div>
+<div class="step-indicator flex-shrink-0 w-6 h-6 rounded-full bg-surface flex items-center justify-center mt-1 mr-4 border-2 border-outline-variant">
+</div>
+<div>
+<h3 class="font-label-caps text-label-caps text-outline mb-1">Analyzing Sources</h3>
+<p class="font-label-code text-label-code text-outline-variant">Pending evaluation of source credibility.</p>
+</div>
+</div>
+<!-- Step 5: Pending -->
+<div class="flex items-start group relative">
+<div class="step-indicator flex-shrink-0 w-6 h-6 rounded-full bg-surface flex items-center justify-center mt-1 mr-4 border-2 border-outline-variant">
+</div>
+<div>
+<h3 class="font-label-caps text-label-caps text-outline mb-1">Calculating Credibility</h3>
+<p class="font-label-code text-label-code text-outline-variant">Final synthesis and scoring pending.</p>
+</div>
+</div>
+</div>
+<div class="mt-12 text-center">
+<button class="px-6 py-2 border border-outline-variant rounded hover:bg-surface-variant transition-colors text-on-surface-variant font-label-caps text-label-caps" onclick="alert('Canceling analysis...')">
+                    Cancel Analysis
+                </button>
+</div>
+</div>
+</main>
+</body></html>

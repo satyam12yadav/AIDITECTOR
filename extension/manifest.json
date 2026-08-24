@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "Fake News Killer — Veritas Protocol",
+  "version": "1.0.0",
+  "description": "One-click forensic misinformation analysis and transparent credibility scoring.",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Analyze Article Credibility with Veritas",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "permissions": [
+    "activeTab",
+    "tabs"
+  ],
+  "host_permissions": [
+    "http://localhost:5001/*",
+    "http://127.0.0.1:5001/*",
+    "http://localhost:3000/*",
+    "http://127.0.0.1:3000/*"
+  ]
+}

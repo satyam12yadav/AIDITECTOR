@@ -1,0 +1,39 @@
+services:
+  # ============================================================================
+  # 1. Backend Web Service (Node.js + Express API)
+  # ============================================================================
+  - type: web
+    name: fake-news-killer-api
+    env: node
+    plan: free
+    region: oregon
+    buildCommand: npm install && npm run server:build
+    startCommand: npm run server:start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: CORS_ORIGIN
+        value: "*"
+      - key: GEMINI_API_KEY
+        sync: false
+
+  # ============================================================================
+  # 2. Frontend Static Site (React 18 + Vite)
+  # ============================================================================
+  - type: web
+    name: fake-news-killer-ui
+    env: static
+    plan: free
+    region: oregon
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_URL
+        sync: false
