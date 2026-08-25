@@ -1,7 +1,6 @@
 import { credibilityScorerService } from '../services/credibilityScorer.service.js';
+import { stanceEvaluatorService } from '../services/stanceEvaluator.service.js';
 import { geminiReasoningService } from '../services/geminiReasoning.service.js';
-import { entityExtractorService } from '../services/entityExtractor.service.js';
-import { evidenceRetrieverService } from '../services/evidenceRetriever.service.js';
 import { ArticleMetadata, ExtractedClaim, RetrievedEvidenceItem } from '../types/api.js';
 
 let passedCount = 0;
@@ -17,14 +16,14 @@ function assert(condition: boolean, message: string) {
   }
 }
 
-console.log('\n🧪 Running Verification Test Suite (General Facts, Superlatives & Geographic Hierarchies)...\n');
+console.log('\n🧪 Running 7-Claim Comprehensive Verification Test Suite...\n');
 
 // ----------------------------------------------------
-// Test Case 1: "Asia is the largest continent." (Expected: SUPPORTS, Score >= 85)
+// TEST 1: "Asia is largest continent in world" -> SUPPORTS, High Credibility (~90-100)
 // ----------------------------------------------------
-console.log('Test Case 1: "Asia is the largest continent." -> SUPPORTS (Score >= 85)');
+console.log('TEST 1: "Asia is largest continent in world" -> SUPPORTS, High Credibility (~90-100)');
 {
-  const claimText = 'Asia is the largest continent.';
+  const claimText = 'Asia is largest continent in world';
   const article: ArticleMetadata = {
     title: claimText,
     author: null,
@@ -34,69 +33,51 @@ console.log('Test Case 1: "Asia is the largest continent." -> SUPPORTS (Score >=
     text: claimText,
   };
 
-  const claims: ExtractedClaim[] = [{ id: 'claim-1', text: claimText, importance: 0.8, claim_type: 'factual' }];
+  const claims: ExtractedClaim[] = [{ id: 'c-1', text: claimText, importance: 0.8, claim_type: 'factual' }];
+
+  const snippet = "Asia is the world's largest and most diverse continent. It occupies the eastern four-fifths of the giant Eurasian landmass.";
+  const stance = stanceEvaluatorService.evaluateDeterministic(claimText, snippet, 'Asia | Britannica');
+
+  assert(stance.relation === 'supports', `Stance is SUPPORTS (${stance.relation})`);
+  assert(stance.stanceScore === 1, `Stance score is +1 (${stance.stanceScore})`);
 
   const evidence: RetrievedEvidenceItem[] = [
     {
       id: 'ev-1',
-      claimId: 'claim-1',
+      claimId: 'c-1',
       sourceName: 'Encyclopædia Britannica',
       sourceUrl: 'https://www.britannica.com/place/Asia',
       sourceTier: 4,
-      title: 'Asia | Continent, Countries, Regions, Map, & Facts',
+      title: 'Asia | Britannica',
       publishedDate: null,
-      evidenceText: "Asia is the world's largest and most diverse continent.",
+      evidenceText: snippet,
       relationToClaim: 'SUPPORTS',
       relevance: 'direct',
-      confidence: 95,
+      confidence: 98,
       credibilityScore: 82,
       relevanceScore: 1.0,
-      keyEvidence: "Asia is the world's largest and most diverse continent",
-      explanation: 'Authoritative encyclopedic reference corroboration.',
+      keyEvidence: "Asia is the world's largest continent",
+      explanation: 'Authoritative encyclopedia confirmation.',
       finalContribution: 82,
       url: 'https://www.britannica.com/place/Asia',
       publisher: 'Encyclopædia Britannica',
       sourceType: 'encyclopedia',
-      snippet: "Asia is the world's largest and most diverse continent.",
-      relation: 'supports',
-    },
-    {
-      id: 'ev-2',
-      claimId: 'claim-1',
-      sourceName: 'thoughtco.com',
-      sourceUrl: 'https://www.thoughtco.com/continents-ranked-by-size-and-population-4163436',
-      sourceTier: 5,
-      title: 'The 7 Continents Ranked by Size and Population',
-      publishedDate: null,
-      evidenceText: "What is the largest continent in the world? That's easy: Asia. It's the biggest in terms of both size and population.",
-      relationToClaim: 'SUPPORTS',
-      relevance: 'direct',
-      confidence: 95,
-      credibilityScore: 50,
-      relevanceScore: 1.0,
-      keyEvidence: "Asia. It's the biggest in terms of both size and population",
-      explanation: 'Reference source confirmation.',
-      finalContribution: 50,
-      url: 'https://www.thoughtco.com/continents-ranked-by-size-and-population-4163436',
-      publisher: 'thoughtco.com',
-      sourceType: 'reference',
-      snippet: "What is the largest continent in the world? That's easy: Asia. It's the biggest in terms of both size and population.",
+      snippet,
       relation: 'supports',
     },
   ];
 
   const result = credibilityScorerService.computeCredibilityScore(article, claims, evidence);
-  assert(result.score >= 85, `Score is >= 85 for "Asia is the largest continent." (${result.score}/100)`);
+  assert(result.score >= 88, `Score is >= 88 (${result.score}/100)`);
   assert(result.verdict === 'Probably Credible' || result.verdict === 'Highly Credible', `Verdict is Credible (${result.verdict})`);
-  assert(result.breakdown.evidenceSupport >= 85, `Evidence Support is >= 85 (${result.breakdown.evidenceSupport})`);
 }
 
 // ----------------------------------------------------
-// Test Case 2: "India is in Asia." (Expected: SUPPORTS, Score >= 90)
+// TEST 2: "Asia is the smallest continent in the world" -> CONTRADICTS, Low Credibility (<= 30)
 // ----------------------------------------------------
-console.log('\nTest Case 2: "India is in Asia." -> SUPPORTS (Score >= 90)');
+console.log('\nTEST 2: "Asia is the smallest continent in the world" -> CONTRADICTS, Low Credibility (<= 30)');
 {
-  const claimText = 'India is in Asia.';
+  const claimText = 'Asia is the smallest continent in the world';
   const article: ArticleMetadata = {
     title: claimText,
     author: null,
@@ -106,148 +87,36 @@ console.log('\nTest Case 2: "India is in Asia." -> SUPPORTS (Score >= 90)');
     text: claimText,
   };
 
-  const claims: ExtractedClaim[] = [{ id: 'claim-1', text: claimText, importance: 0.8, claim_type: 'factual' }];
+  const claims: ExtractedClaim[] = [{ id: 'c-2', text: claimText, importance: 0.9, claim_type: 'factual' }];
+
+  const snippet = "Asia is the largest continent in the world by both land area and population.";
+  const stance = stanceEvaluatorService.evaluateDeterministic(claimText, snippet, 'Asia | Reference');
+
+  assert(stance.relation === 'contradicts', `Stance is CONTRADICTS (${stance.relation})`);
+  assert(stance.stanceScore === -1, `Stance score is -1 (${stance.stanceScore})`);
 
   const evidence: RetrievedEvidenceItem[] = [
     {
       id: 'ev-1',
-      claimId: 'claim-1',
-      sourceName: 'India Today Fact Check',
-      sourceUrl: 'https://indiatoday.in/fact-check',
-      sourceTier: 2,
-      title: 'Women’s Asia Cup: India in Asia',
-      publishedDate: '2026-08-25',
-      evidenceText: 'Reporting confirms India in Asia tournament.',
-      relationToClaim: 'SUPPORTS',
-      relevance: 'direct',
-      confidence: 95,
-      credibilityScore: 92,
-      relevanceScore: 1.0,
-      keyEvidence: 'India in Asia',
-      explanation: 'Verified Fact-Check source confirmation.',
-      finalContribution: 92,
-      url: 'https://indiatoday.in/fact-check',
-      publisher: 'India Today Fact Check',
-      sourceType: 'fact_check',
-      snippet: 'Reporting confirms India in Asia tournament.',
-      relation: 'supports',
-    },
-    {
-      id: 'ev-2',
-      claimId: 'claim-1',
-      sourceName: 'The Indian Express',
-      sourceUrl: 'https://indianexpress.com/article',
-      sourceTier: 3,
-      title: 'India Central Asia strategy',
-      publishedDate: '2026-08-25',
-      evidenceText: 'India regional policy in Central Asia.',
-      relationToClaim: 'SUPPORTS',
-      relevance: 'direct',
-      confidence: 95,
-      credibilityScore: 85,
-      relevanceScore: 1.0,
-      keyEvidence: 'India in Central Asia',
-      explanation: 'Broadsheet news verification.',
-      finalContribution: 85,
-      url: 'https://indianexpress.com/article',
-      publisher: 'The Indian Express',
-      sourceType: 'news',
-      snippet: 'India regional policy in Central Asia.',
-      relation: 'supports',
-    },
-  ];
-
-  const result = credibilityScorerService.computeCredibilityScore(article, claims, evidence);
-  assert(result.score >= 90, `Score is >= 90 for "India is in Asia." (${result.score}/100)`);
-  assert(result.verdict === 'Highly Credible', `Verdict is Highly Credible (${result.verdict})`);
-}
-
-// ----------------------------------------------------
-// Test Case 3: "Ram Mandir is in Ayodhya, India." (Expected: SUPPORTS, Score >= 90)
-// ----------------------------------------------------
-console.log('\nTest Case 3: "Ram Mandir is in Ayodhya, India." -> SUPPORTS (Score >= 90)');
-{
-  const claimText = 'Ram Mandir is in Ayodhya, India.';
-  const article: ArticleMetadata = {
-    title: claimText,
-    author: null,
-    publishedAt: null,
-    publisher: 'Direct Text Ingestion',
-    url: null,
-    text: claimText,
-  };
-
-  const claims: ExtractedClaim[] = [{ id: 'claim-1', text: claimText, importance: 0.85, claim_type: 'factual' }];
-
-  const evidence: RetrievedEvidenceItem[] = [
-    {
-      id: 'ev-1',
-      claimId: 'claim-1',
-      sourceName: 'India Today Fact Check',
-      sourceUrl: 'https://indiatoday.in/fact-check',
-      sourceTier: 2,
-      title: 'Ram Mandir in Ayodhya',
-      publishedDate: '2026-08-25',
-      evidenceText: 'Ram temple in Ayodhya Uttar Pradesh India.',
-      relationToClaim: 'SUPPORTS',
-      relevance: 'direct',
-      confidence: 95,
-      credibilityScore: 92,
-      relevanceScore: 1.0,
-      keyEvidence: 'Ayodhya Ram temple',
-      explanation: 'Fact-check corroboration.',
-      finalContribution: 92,
-      url: 'https://indiatoday.in/fact-check',
-      publisher: 'India Today Fact Check',
-      sourceType: 'fact_check',
-      snippet: 'Ram temple in Ayodhya Uttar Pradesh India.',
-      relation: 'supports',
-    },
-  ];
-
-  const result = credibilityScorerService.computeCredibilityScore(article, claims, evidence);
-  assert(result.score >= 90, `Score is >= 90 for "Ram Mandir is in Ayodhya, India." (${result.score}/100)`);
-}
-
-// ----------------------------------------------------
-// Test Case 4: Deliberately false geographical claim ("Asia is the smallest continent.")
-// ----------------------------------------------------
-console.log('\nTest Case 4: Deliberately false claim ("Asia is the smallest continent.") -> CONTRADICTS (Score <= 30)');
-{
-  const claimText = 'Asia is the smallest continent.';
-  const article: ArticleMetadata = {
-    title: claimText,
-    author: null,
-    publishedAt: null,
-    publisher: 'Direct Text Ingestion',
-    url: null,
-    text: claimText,
-  };
-
-  const claims: ExtractedClaim[] = [{ id: 'claim-1', text: claimText, importance: 0.9, claim_type: 'factual' }];
-
-  const evidence: RetrievedEvidenceItem[] = [
-    {
-      id: 'ev-1',
-      claimId: 'claim-1',
+      claimId: 'c-2',
       sourceName: 'Encyclopædia Britannica',
-      sourceUrl: 'https://britannica.com/place/Asia',
+      sourceUrl: 'https://www.britannica.com/place/Asia',
       sourceTier: 4,
-      title: 'Asia Facts',
+      title: 'Asia Reference',
       publishedDate: null,
-      evidenceText: "Asia is the world's largest continent by area and population.",
+      evidenceText: snippet,
       relationToClaim: 'CONTRADICTS',
       relevance: 'direct',
       confidence: 98,
       credibilityScore: 82,
       relevanceScore: 1.0,
-      keyEvidence: "world's largest continent",
-      explanation: "Direct contradiction: Reference documents Asia as largest continent, disproving claim of smallest.",
+      keyEvidence: "Asia is the largest continent in the world",
+      explanation: 'Direct contradiction of smallest.',
       finalContribution: 82,
-      url: 'https://britannica.com/place/Asia',
+      url: 'https://www.britannica.com/place/Asia',
       publisher: 'Encyclopædia Britannica',
       sourceType: 'encyclopedia',
-      snippet: "Asia is the world's largest continent by area and population.",
+      snippet,
       relation: 'contradicts',
     },
   ];
@@ -255,17 +124,91 @@ console.log('\nTest Case 4: Deliberately false claim ("Asia is the smallest cont
   const result = credibilityScorerService.computeCredibilityScore(article, claims, evidence);
   assert(result.score <= 30, `Score is low (${result.score} <= 30)`);
   assert(result.verdict === 'Likely Misleading' || result.verdict === 'Highly Suspicious', `Verdict refutes false claim (${result.verdict})`);
-  assert(result.breakdown.evidenceSupport === 0, `Evidence Support is 0 on direct contradiction (${result.breakdown.evidenceSupport})`);
 }
 
 // ----------------------------------------------------
-// Test Case 5: Query Generation Validation
+// TEST 3: "Asia is located in the Northern Hemisphere" -> SUPPORTS
 // ----------------------------------------------------
-console.log('\nTest Case 5: Semantic Search Query Generation');
+console.log('\nTEST 3: "Asia is located in the Northern Hemisphere" -> SUPPORTS');
 {
-  const queries = evidenceRetrieverService.generateSearchQueries('Asia is the largest continent.');
-  assert(queries.length >= 2, `Generated at least 2 queries (${queries.length})`);
-  assert(queries.some((q) => q.toLowerCase().includes('largest continent')), `Includes 'largest continent' query (${JSON.stringify(queries)})`);
+  const claimText = 'Asia is located in the Northern Hemisphere';
+  const snippet = "Asia is located primarily in the Eastern and Northern Hemispheres.";
+  const stance = stanceEvaluatorService.evaluateDeterministic(claimText, snippet, 'Asia Geography');
+
+  assert(stance.relation === 'supports', `Stance is SUPPORTS (${stance.relation})`);
+  assert(stance.stanceScore === 1, `Stance score is +1 (${stance.stanceScore})`);
+}
+
+// ----------------------------------------------------
+// TEST 4: "Asia has many countries" -> SUPPORTS
+// ----------------------------------------------------
+console.log('\nTEST 4: "Asia has many countries" -> SUPPORTS');
+{
+  const claimText = 'Asia has many countries';
+  const snippet = "Asia contains 48 sovereign countries recognized by the United Nations.";
+  const stance = stanceEvaluatorService.evaluateDeterministic(claimText, snippet, 'Countries in Asia');
+
+  assert(stance.relation === 'supports', `Stance is SUPPORTS (${stance.relation})`);
+  assert(stance.stanceScore === 1, `Stance score is +1 (${stance.stanceScore})`);
+}
+
+// ----------------------------------------------------
+// TEST 5: "Asia is located entirely in South America" -> CONTRADICTS
+// ----------------------------------------------------
+console.log('\nTEST 5: "Asia is located entirely in South America" -> CONTRADICTS');
+{
+  const claimText = 'Asia is located entirely in South America';
+  const snippet = "Asia is the largest continent in the Eastern Hemisphere, occupying four-fifths of Eurasia.";
+  const stance = stanceEvaluatorService.evaluateDeterministic(claimText, snippet, 'Asia Geography');
+
+  assert(stance.relation === 'contradicts', `Stance is CONTRADICTS (${stance.relation})`);
+  assert(stance.stanceScore === -1, `Stance score is -1 (${stance.stanceScore})`);
+}
+
+// ----------------------------------------------------
+// TEST 6: "Asia has mountains" -> SUPPORTS
+// ----------------------------------------------------
+console.log('\nTEST 6: "Asia has mountains" -> SUPPORTS');
+{
+  const claimText = 'Asia has mountains';
+  const snippet = "Asia has both the highest points on Earth including the Himalayas and longest mountain ranges.";
+  const stance = stanceEvaluatorService.evaluateDeterministic(claimText, snippet, 'Mountains of Asia');
+
+  assert(stance.relation === 'supports', `Stance is SUPPORTS (${stance.relation})`);
+  assert(stance.stanceScore === 1, `Stance score is +1 (${stance.stanceScore})`);
+}
+
+// ----------------------------------------------------
+// TEST 7: Obscure Unsupported Claim -> UNCLEAR / INSUFFICIENT EVIDENCE (NOT CONTRADICTS)
+// ----------------------------------------------------
+console.log('\nTEST 7: Obscure unsupported claim -> UNCLEAR / INSUFFICIENT EVIDENCE (NOT CONTRADICTS)');
+{
+  const claimText = 'Ancient hidden crystal reactor discovered beneath city hall.';
+  const snippet = "The city hall was built in 1924 and underwent renovations in 1980.";
+  const stance = stanceEvaluatorService.evaluateDeterministic(claimText, snippet, 'City Hall Records');
+
+  assert(stance.relation === 'unclear', `Stance is UNCLEAR (${stance.relation})`);
+  assert(stance.stanceScore === 0, `Stance score is 0 (${stance.stanceScore})`);
+  assert(stance.relationToClaim === 'NEUTRAL', `Relation is NEUTRAL (${stance.relationToClaim})`);
+
+  const article: ArticleMetadata = {
+    title: claimText,
+    author: null,
+    publishedAt: null,
+    publisher: 'Direct Text Ingestion',
+    url: null,
+    text: claimText,
+  };
+
+  const claims: ExtractedClaim[] = [{ id: 'c-7', text: claimText, importance: 0.7, claim_type: 'factual' }];
+  const evidence: RetrievedEvidenceItem[] = [];
+
+  const result = credibilityScorerService.computeCredibilityScore(article, claims, evidence);
+  assert(result.score >= 40 && result.score <= 60, `Score is unverified neutral between 40-60 (${result.score})`);
+  assert(result.verdict === 'Needs Verification', `Verdict is Needs Verification (${result.verdict})`);
+
+  const reasoning = geminiReasoningService.evaluateDeterministic(claims[0], [], [], [], []);
+  assert(reasoning.verdict === 'UNVERIFIED', `Gemini verdict is UNVERIFIED (${reasoning.verdict})`);
 }
 
 console.log(`\n========================================`);

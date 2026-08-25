@@ -259,6 +259,19 @@ export class EvidenceRetrieverService {
           ? 'news'
           : 'other');
 
+      // Requirement 2: Explicit per-evidence debug logging
+      console.log(`\n------------------------------------------------------------`);
+      console.log(`CLAIM:\n${claim.text}`);
+      console.log(`\nSOURCE:\n${candidate.url}`);
+      console.log(`\nDOMAIN:\n${sourceEval.domain || resolvedName}`);
+      console.log(`\nEVIDENCE TITLE:\n${decode(candidate.title)}`);
+      console.log(`\nEVIDENCE SNIPPET:\n${decode(candidate.snippet)}`);
+      console.log(`\nSOURCE REGISTRY TIER:\nTier ${sourceEval.credibilityTier} (${sourceEval.category})`);
+      console.log(`\nGEMINI RELATION:\n${stance.relation}`);
+      console.log(`\nSTANCE SCORE:\n${stance.stanceScore > 0 ? '+1' : stance.stanceScore < 0 ? '-1' : '0'}`);
+      console.log(`\nGEMINI REASONING:\n${stance.reasoning}`);
+      console.log(`------------------------------------------------------------\n`);
+
       return {
         sourceName: resolvedName,
         sourceUrl: candidate.url,
