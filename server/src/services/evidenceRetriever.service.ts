@@ -2,6 +2,7 @@ import * as cheerio from 'cheerio';
 import { decode } from 'html-entities';
 import { ExtractedClaim, RetrievedEvidenceItem, SourceType, EvidenceRelation } from '../types/api.js';
 import { sourceRegistry } from './sourceRegistry.service.js';
+import { stanceEvaluatorService } from './stanceEvaluator.service.js';
 
 interface RawSearchCandidate {
   title: string;
@@ -52,82 +53,67 @@ const FACT_CHECK_DOMAINS = [
   'fullfact.org',
   'leadstories.com',
   'checkyourfact.com',
-  'factchecktools.googleapis.com',
+  'boomlive.in',
+  'altnews.in',
+  'factcheck.pib.gov.in',
+  'factchecker.in',
+  'newschecker.in',
+  'factcrescendo.com',
 ];
 
 const NEWS_DOMAINS = [
+  'ptinews.com',
+  'aninews.in',
+  'thehindu.com',
+  'indianexpress.com',
+  'hindustantimes.com',
+  'timesofindia.indiatimes.com',
+  'ndtv.com',
+  'livemint.com',
+  'business-standard.com',
+  'economictimes.indiatimes.com',
   'reuters.com',
   'apnews.com',
   'bbc.com',
-  'bbc.co.uk',
-  'bloomberg.com',
-  'ft.com',
-  'wsj.com',
   'theguardian.com',
-  'nytimes.com',
-  'washingtonpost.com',
-  'economist.com',
-  'npr.org',
-  'aljazeera.com',
-  'associatedpress.com',
-  'afp.com',
-  'axios.com',
-  'politico.com',
+  'bloomberg.com',
 ];
 
 const CONTRADICT_PHRASES = [
-  /\b(debunked|false|incorrect|hoax|untrue|fabricated|disproven|fake|pants on fire|misleading|no evidence)\b/i,
-  /\b(did not|never happened|denied|refuted|unsubstantiated|contradicted by|contrary to)\b/i,
-  /\b(claim is false|claim is baseless|claim is misleading)\b/i,
+  /\b(debunked|false claim|misleading|hoax|untrue|fabricated|fact check: false|no evidence)\b/i,
+  /\b(incorrectly claimed|falsely claimed|did not happen|denied reports)\b/i,
 ];
 
 const SUPPORT_PHRASES = [
-  /\b(confirmed|verified|proven|official records show|data demonstrates|according to official|found that)\b/i,
-  /\b(study confirms|statistics show|records confirm|true|accurate|corroborated)\b/i,
+  /\b(confirmed that|announced that|official data shows|released data|reports that|stated that|growth of|rose by|increased by)\b/i,
+  /\b(according to official|published report|survey found|statistics show)\b/i,
 ];
 
 export class EvidenceRetrieverService {
   /**
-   * Retrieves real external evidence for a list of factual claims
+   * Retrieves verified evidence for a list of extracted claims concurrently
    */
   public async retrieveEvidence(claims: ExtractedClaim[]): Promise<RetrievedEvidenceItem[]> {
     if (!claims || claims.length === 0) {
       return [];
     }
 
-    const allEvidence: RetrievedEvidenceItem[] = [];
-    let evidenceCounter = 1;
-
-    // Process top-priority claims (claims with highest importance)
     const prioritizedClaims = claims.slice(0, 5);
+    const evidencePromises = prioritizedClaims.map(async (claim) => {
+      const claimEvidence = await this.retrieveForClaim(claim);
+      return claimEvidence.map((ev, index) => ({
+        id: `ev-${claim.id}-${index + 1}`,
+        claimId: claim.id,
+        ...ev,
+      }));
+    });
 
-    for (const claim of prioritizedClaims) {
-      try {
-        const claimEvidence = await this.retrieveForClaim(claim);
-
-        for (const item of claimEvidence) {
-          allEvidence.push({
-            id: `evidence-${evidenceCounter++}`,
-            claimId: claim.id,
-            title: item.title,
-            url: item.url,
-            publisher: item.publisher,
-            sourceType: item.sourceType,
-            snippet: item.snippet,
-            relation: item.relation,
-          });
-        }
-      } catch (err) {
-        console.warn(`[EvidenceRetriever] Search failed for claim ${claim.id}:`, err);
-        // Continue processing remaining claims
-      }
-    }
-
-    return allEvidence;
+    const results = await Promise.all(evidencePromises);
+    return results.flat();
   }
 
   /**
-   * Retrieves verified sources for an individual claim
+   * Retrieves verified sources for an individual claim with news-priority and AI stance
    */
   private async retrieveForClaim(
     claim: ExtractedClaim
@@ -137,39 +123,53 @@ export class EvidenceRetrieverService {
       return [];
     }
 
-    // 1. Search Wikipedia & Open Knowledge Repositories
-    const wikiCandidates = await this.searchWikipedia(query).catch(() => []);
-
-    // 2. Search Open Web via live search parser
+    // 1. Search Open Web & Verified News Publishers First
     const webCandidates = await this.searchWeb(query).catch(() => []);
 
-    // Combine candidate sources (deduplicating by URL)
+    // 2. Only search Wikipedia if web candidates are insufficient (< 2 items)
+    let wikiCandidates: RawSearchCandidate[] = [];
+    if (webCandidates.length < 2) {
+      wikiCandidates = await this.searchWikipedia(query).catch(() => []);
+    }
+
+    // Combine candidate sources: News & Fact-checkers take priority over Wikipedia
     const combinedCandidates: RawSearchCandidate[] = [];
     const seenUrls = new Set<string>();
 
-    for (const candidate of [...wikiCandidates, ...webCandidates]) {
+    for (const candidate of [...webCandidates, ...wikiCandidates]) {
       if (candidate.url && !seenUrls.has(candidate.url)) {
         seenUrls.add(candidate.url);
         combinedCandidates.push(candidate);
       }
     }
 
-    // 3. Classify and map candidates
+    // 3. Classify sources and evaluate semantic stance with Gemini AI
     const evidenceList: Omit<RetrievedEvidenceItem, 'id' | 'claimId'>[] = [];
 
     for (const candidate of combinedCandidates.slice(0, 3)) {
       if (!this.isValidEvidenceUrl(candidate.url)) continue;
 
       const sourceType = this.classifySourceType(candidate.url, candidate.publisher);
-      const relation = this.determineRelation(claim.text, candidate.snippet, candidate.title);
+      
+      // Use AI Stance Evaluator (Gemini with semantic fallback)
+      const stance = await stanceEvaluatorService.evaluateStance(
+        claim.text,
+        candidate.snippet,
+        candidate.title,
+        candidate.publisher
+      );
+
+      // If publisher matches our 54 database, ensure exact verified name is used
+      const regMatch = sourceRegistry.matchSource(candidate.url) || sourceRegistry.matchSource(candidate.publisher);
+      const displayPublisher = regMatch ? regMatch.name : decode(candidate.publisher);
 
       evidenceList.push({
         title: decode(candidate.title),
         url: candidate.url,
-        publisher: decode(candidate.publisher),
+        publisher: displayPublisher,
         sourceType,
         snippet: decode(candidate.snippet),
-        relation,
+        relation: stance.relation,
       });
     }
 
@@ -309,6 +309,13 @@ export class EvidenceRetrieverService {
             snippet,
           });
         }
+      });
+
+      // Prioritize verified news outlets and fact-checkers from Book1.xlsx
+      candidates.sort((a, b) => {
+        const aVerified = sourceRegistry.matchSource(a.url) ? 1 : 0;
+        const bVerified = sourceRegistry.matchSource(b.url) ? 1 : 0;
+        return bVerified - aVerified;
       });
 
       return candidates;
