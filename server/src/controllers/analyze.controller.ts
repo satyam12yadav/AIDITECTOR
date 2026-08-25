@@ -1,9 +1,12 @@
 import { Request, Response, NextFunction } from 'express';
-import { AnalyzeRequestBody, AnalyzeResponseData } from '../types/api.js';
+import { AnalyzeRequestBody, AnalyzeResponseData, ExtractedClaim } from '../types/api.js';
 import { extractorService } from '../services/extractor.service.js';
 import { claimExtractorService } from '../services/claimExtractor.service.js';
+import { entityExtractorService } from '../services/entityExtractor.service.js';
 import { evidenceRetrieverService } from '../services/evidenceRetriever.service.js';
+import { geminiReasoningService } from '../services/geminiReasoning.service.js';
 import { credibilityScorerService } from '../services/credibilityScorer.service.js';
+import { sourceRegistry } from '../services/sourceRegistry.service.js';
 
 export const analyzeArticle = async (
   req: Request<{}, {}, AnalyzeRequestBody>,
@@ -54,21 +57,59 @@ export const analyzeArticle = async (
     }
 
     // 1. Extract factual claims from the article text
-    const { claims } = claimExtractorService.extractClaims(articleResult.text);
+    const { claims: rawClaims } = claimExtractorService.extractClaims(articleResult.text);
 
-    // 2. Retrieve real external evidence for the extracted claims
+    // 2. Extract entities for each claim
+    const claims: ExtractedClaim[] = rawClaims.map((c) => ({
+      ...c,
+      entities: entityExtractorService.extractEntities(c.text),
+    }));
+
+    // 3. Retrieve multi-source evidence for the extracted claims
     const evidence = await evidenceRetrieverService.retrieveEvidence(claims);
 
-    // 3. Calculate transparent credibility score
+    // 4. Perform evidence-grounded AI reasoning for each claim
+    const evaluatedClaims: ExtractedClaim[] = await Promise.all(
+      claims.map(async (claim) => {
+        const claimEvidence = evidence.filter((e) => e.claimId === claim.id);
+        const evaluation = await geminiReasoningService.evaluateClaimReasoning(
+          claim,
+          articleResult,
+          claimEvidence
+        );
+        return {
+          ...claim,
+          evaluation,
+        };
+      })
+    );
+
+    // 5. Calculate transparent credibility score
     const scoringResult = credibilityScorerService.computeCredibilityScore(
       articleResult,
-      claims,
+      evaluatedClaims,
       evidence
     );
 
+    // Deduplicate and enrich sources list
+    const sourceMap = new Map<string, any>();
+    for (const e of evidence) {
+      const pubKey = (e.publisher || e.sourceName || e.url).toLowerCase();
+      if (!sourceMap.has(pubKey)) {
+        const regInfo = sourceRegistry.getSourceCredibility(e.url || e.publisher);
+        sourceMap.set(pubKey, {
+          name: e.sourceName || e.publisher,
+          url: e.sourceUrl || e.url,
+          type: e.sourceType,
+          tier: e.sourceTier || regInfo.credibilityTier,
+          badge: regInfo.badge,
+        });
+      }
+    }
+
     const responseData: AnalyzeResponseData = {
       article: articleResult,
-      claims: claims,
+      claims: evaluatedClaims,
       evidence: evidence,
       score: scoringResult.score,
       verdict: scoringResult.verdict,
@@ -77,11 +118,7 @@ export const analyzeArticle = async (
       summary: scoringResult.summary,
       limitations: scoringResult.limitations,
       reasons: [scoringResult.summary, ...scoringResult.limitations],
-      sources: evidence.map((e) => ({
-        name: e.publisher,
-        url: e.url,
-        type: e.sourceType,
-      })),
+      sources: Array.from(sourceMap.values()),
     };
 
     res.status(200).json(responseData);

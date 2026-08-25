@@ -1,97 +1,26 @@
 import * as cheerio from 'cheerio';
 import { decode } from 'html-entities';
-import { ExtractedClaim, RetrievedEvidenceItem, SourceType, EvidenceRelation } from '../types/api.js';
+import { ExtractedClaim, RetrievedEvidenceItem, SourceType, EvidenceRelation, RelationToClaim } from '../types/api.js';
 import { sourceRegistry } from './sourceRegistry.service.js';
 import { stanceEvaluatorService } from './stanceEvaluator.service.js';
+import { googleFactCheckService } from './googleFactCheck.service.js';
 
-interface RawSearchCandidate {
+interface RawCandidate {
   title: string;
   url: string;
   publisher: string;
   snippet: string;
+  publishedDate: string | null;
+  priorityTier: 1 | 2 | 3 | 4 | 5;
 }
 
-const OFFICIAL_DOMAINS = [
-  '.gov',
-  '.mil',
-  '.gc.ca',
-  '.gov.uk',
-  '.gov.au',
-  'who.int',
-  'un.org',
-  'bis.org',
-  'cbo.gov',
-  'federalregister.gov',
-  'fda.gov',
-  'cdc.gov',
-  'sec.gov',
-  'worldbank.org',
-  'imf.org',
-];
-
-const ACADEMIC_DOMAINS = [
-  '.edu',
-  '.ac.uk',
-  '.ac.jp',
-  'nih.gov',
-  'ncbi.nlm.nih.gov',
-  'nature.com',
-  'sciencedirect.com',
-  'arxiv.org',
-  'springer.com',
-  'cell.com',
-  'thelancet.com',
-  'jstor.org',
-  'pnas.org',
-  'bmj.com',
-];
-
-const FACT_CHECK_DOMAINS = [
-  'snopes.com',
-  'politifact.com',
-  'factcheck.org',
-  'fullfact.org',
-  'leadstories.com',
-  'checkyourfact.com',
-  'boomlive.in',
-  'altnews.in',
-  'factcheck.pib.gov.in',
-  'factchecker.in',
-  'newschecker.in',
-  'factcrescendo.com',
-];
-
-const NEWS_DOMAINS = [
-  'ptinews.com',
-  'aninews.in',
-  'thehindu.com',
-  'indianexpress.com',
-  'hindustantimes.com',
-  'timesofindia.indiatimes.com',
-  'ndtv.com',
-  'livemint.com',
-  'business-standard.com',
-  'economictimes.indiatimes.com',
-  'reuters.com',
-  'apnews.com',
-  'bbc.com',
-  'theguardian.com',
-  'bloomberg.com',
-];
-
-const CONTRADICT_PHRASES = [
-  /\b(debunked|false claim|misleading|hoax|untrue|fabricated|fact check: false|no evidence)\b/i,
-  /\b(incorrectly claimed|falsely claimed|did not happen|denied reports)\b/i,
-];
-
-const SUPPORT_PHRASES = [
-  /\b(confirmed that|announced that|official data shows|released data|reports that|stated that|growth of|rose by|increased by)\b/i,
-  /\b(according to official|published report|survey found|statistics show)\b/i,
+const INSTITUTIONAL_TRIGGERS = [
+  /\b(government|govt|politics|public policy|law|court|supreme court|high court|election|eci|health|who|rbi|isro|nasa|official announcement|scheme|ministry|parliament|pm|president|statutory)\b/i,
 ];
 
 export class EvidenceRetrieverService {
   /**
-   * Retrieves verified evidence for a list of extracted claims concurrently
+   * Retrieves verified multi-source evidence for a list of extracted claims concurrently
    */
   public async retrieveEvidence(claims: ExtractedClaim[]): Promise<RetrievedEvidenceItem[]> {
     if (!claims || claims.length === 0) {
@@ -113,7 +42,7 @@ export class EvidenceRetrieverService {
   }
 
   /**
-   * Retrieves verified sources for an individual claim with news-priority and AI stance
+   * Multi-Source Evidence Retrieval Pipeline for an individual claim
    */
   private async retrieveForClaim(
     claim: ExtractedClaim
@@ -123,35 +52,166 @@ export class EvidenceRetrieverService {
       return [];
     }
 
-    // 1. Search Open Web & Verified News Publishers First
-    const webCandidates = await this.searchWeb(query).catch(() => []);
-
-    // 2. Only search Wikipedia if web candidates are insufficient (< 2 items)
-    let wikiCandidates: RawSearchCandidate[] = [];
-    if (webCandidates.length < 2) {
-      wikiCandidates = await this.searchWikipedia(query).catch(() => []);
-    }
-
-    // Combine candidate sources: News & Fact-checkers take priority over Wikipedia
-    const combinedCandidates: RawSearchCandidate[] = [];
+    const rawCandidates: RawCandidate[] = [];
     const seenUrls = new Set<string>();
 
-    for (const candidate of [...webCandidates, ...wikiCandidates]) {
-      if (candidate.url && !seenUrls.has(candidate.url)) {
-        seenUrls.add(candidate.url);
-        combinedCandidates.push(candidate);
+    const addCandidate = (c: RawCandidate) => {
+      if (c.url && !seenUrls.has(c.url) && this.isValidEvidenceUrl(c.url)) {
+        seenUrls.add(c.url);
+        rawCandidates.push(c);
+      }
+    };
+
+    // -------------------------------------------------------------
+    // Stage 1: Google Fact Check Tools API Search
+    // -------------------------------------------------------------
+    try {
+      const factChecks = await googleFactCheckService.searchFactChecks(query);
+      for (const fc of factChecks) {
+        addCandidate({
+          title: fc.title,
+          url: fc.url,
+          publisher: fc.publisher,
+          snippet: fc.snippet,
+          publishedDate: fc.publishedDate,
+          priorityTier: 2, // Established fact-check tier
+        });
+      }
+    } catch {
+      // Non-blocking stage failure
+    }
+
+    // -------------------------------------------------------------
+    // Stage 2: Live News Wires & Broadsheets via Google News RSS
+    // -------------------------------------------------------------
+    try {
+      const newsRssResults = await this.searchGoogleNewsRss(query, 5);
+      for (const nr of newsRssResults) {
+        const regCheck = sourceRegistry.matchSource(nr.url) || sourceRegistry.matchSource(nr.publisher);
+        const tier = regCheck ? regCheck.credibilityTier : 3;
+        addCandidate({
+          ...nr,
+          priorityTier: tier,
+        });
+      }
+
+      // If claim mentions specific prominent entities (e.g. Ram Mandir, Chandrayaan), also retrieve entity truth
+      if (claim.entities?.events && claim.entities.events.length > 0) {
+        for (const ev of claim.entities.events) {
+          const entityNews = await this.searchGoogleNewsRss(`${ev} location`, 3);
+          for (const en of entityNews) {
+            addCandidate(en);
+          }
+          const wikiEntity = await this.searchWikipedia(ev);
+          for (const we of wikiEntity) {
+            addCandidate({ ...we, priorityTier: 4 });
+          }
+        }
+      }
+    } catch {
+      // Non-blocking
+    }
+
+    // -------------------------------------------------------------
+    // Stage 3: Targeted Institutional / Government Search (if triggered)
+    // -------------------------------------------------------------
+    const isInstitutional = INSTITUTIONAL_TRIGGERS.some((pat) => pat.test(claim.text));
+    if (isInstitutional) {
+      try {
+        const govQuery = `${query} (site:gov.in OR site:nic.in OR site:pib.gov.in OR site:rbi.org.in OR site:who.int OR site:un.org)`;
+        const govResults = await this.searchWeb(govQuery, 2);
+        for (const g of govResults) {
+          addCandidate({
+            ...g,
+            priorityTier: 1, // Official government authority
+          });
+        }
+      } catch {
+        // Non-blocking
       }
     }
 
-    // 3. Classify sources and evaluate semantic stance with Gemini AI
+    // -------------------------------------------------------------
+    // Stage 4: Authoritative Web & 54-Source Registry Search
+    // -------------------------------------------------------------
+    try {
+      const webResults = await this.searchWeb(query, 3);
+      for (const n of webResults) {
+        const regCheck = sourceRegistry.matchSource(n.url) || sourceRegistry.matchSource(n.publisher);
+        const tier = regCheck ? regCheck.credibilityTier : 3;
+        addCandidate({
+          ...n,
+          priorityTier: tier,
+        });
+      }
+    } catch {
+      // Non-blocking
+    }
+
+    // -------------------------------------------------------------
+    // Stage 5: Supplementary Wikipedia Fallback (Strictly Secondary)
+    // -------------------------------------------------------------
+    if (rawCandidates.length < 2) {
+      try {
+        const wikiResults = await this.searchWikipedia(query);
+        for (const w of wikiResults) {
+          addCandidate({
+            ...w,
+            priorityTier: 4, // Secondary reference tier
+          });
+        }
+      } catch {
+        // Non-blocking
+      }
+    }
+
+    // -------------------------------------------------------------
+    // Stage 5b: Entity Subject Query Expansion (For Falsified/Contradictory Claims)
+    // -------------------------------------------------------------
+    if (rawCandidates.length === 0) {
+      const entities = claim.entities;
+      let subjectQuery = '';
+      if (entities?.events && entities.events.length > 0) {
+        subjectQuery = `${entities.events[0]} location`;
+      } else if (entities?.organizations && entities.organizations.length > 0) {
+        subjectQuery = `${entities.organizations[0]} official`;
+      } else if (entities?.people && entities.people.length > 0) {
+        subjectQuery = `${entities.people[0]} news`;
+      }
+
+      if (subjectQuery) {
+        try {
+          const fallbackNews = await this.searchGoogleNewsRss(subjectQuery, 3);
+          for (const fn of fallbackNews) {
+            addCandidate(fn);
+          }
+          if (rawCandidates.length < 2) {
+            const fallbackWiki = await this.searchWikipedia(subjectQuery);
+            for (const fw of fallbackWiki) {
+              addCandidate(fw);
+            }
+          }
+        } catch {
+          // Non-blocking
+        }
+      }
+    }
+
+    // -------------------------------------------------------------
+    // Stage 6: Semantic Stance Evaluation & Ranking
+    // -------------------------------------------------------------
     const evidenceList: Omit<RetrievedEvidenceItem, 'id' | 'claimId'>[] = [];
 
-    for (const candidate of combinedCandidates.slice(0, 3)) {
-      if (!this.isValidEvidenceUrl(candidate.url)) continue;
+    for (const candidate of rawCandidates) {
+      // Prioritize checking publisher name or direct source domain
+      const sourceEval =
+        sourceRegistry.getSourceCredibility(candidate.publisher) ||
+        sourceRegistry.getSourceCredibility(candidate.url);
 
-      const sourceType = this.classifySourceType(candidate.url, candidate.publisher);
-      
-      // Use AI Stance Evaluator (Gemini with semantic fallback)
+      const resolvedName = sourceEval.isRegistered ? sourceEval.name : decode(candidate.publisher);
+      const credScore = Math.round(sourceEval.credibilityWeight * 100);
+
+      // Perform deep AI / semantic stance evaluation
       const stance = await stanceEvaluatorService.evaluateStance(
         claim.text,
         candidate.snippet,
@@ -159,34 +219,113 @@ export class EvidenceRetrieverService {
         candidate.publisher
       );
 
-      // If publisher matches our 54 database, ensure exact verified name is used
-      const regMatch = sourceRegistry.matchSource(candidate.url) || sourceRegistry.matchSource(candidate.publisher);
-      const displayPublisher = regMatch ? regMatch.name : decode(candidate.publisher);
+      const sourceType: SourceType =
+        sourceEval.credibilityTier === 1
+          ? 'official'
+          : sourceEval.credibilityTier === 2
+          ? 'fact_check'
+          : sourceEval.credibilityTier === 3 || sourceEval.credibilityTier === 4
+          ? 'news'
+          : 'other';
 
       evidenceList.push({
+        sourceName: resolvedName,
+        sourceUrl: candidate.url,
+        sourceTier: sourceEval.credibilityTier,
         title: decode(candidate.title),
+        publishedDate: candidate.publishedDate,
+        evidenceText: decode(candidate.snippet),
+        relationToClaim: stance.relationToClaim,
+        credibilityScore: credScore,
+        relevanceScore: stance.relevanceScore,
+        explanation: stance.explanation,
+
+        // Legacy compatibility
         url: candidate.url,
-        publisher: displayPublisher,
+        publisher: resolvedName,
         sourceType,
         snippet: decode(candidate.snippet),
         relation: stance.relation,
       });
     }
 
-    return evidenceList;
+    // Rank evidence: Sort by composite score: (Credibility * 0.5) + (Relevance * 50) + Higher Tier Bonus
+    evidenceList.sort((a, b) => {
+      const scoreA = a.credibilityScore * 0.5 + a.relevanceScore * 50 + (6 - a.sourceTier) * 5;
+      const scoreB = b.credibilityScore * 0.5 + b.relevanceScore * 50 + (6 - b.sourceTier) * 5;
+      return scoreB - scoreA;
+    });
+
+    // Return top 3 highest-quality ranked evidence records
+    return evidenceList.slice(0, 3);
   }
 
   /**
-   * Constructs an effective keyword search query from the claim text
+   * Searches live news articles via Google News RSS
+   */
+  private async searchGoogleNewsRss(query: string, maxResults = 4): Promise<RawCandidate[]> {
+    const encoded = encodeURIComponent(query);
+    const url = `https://news.google.com/rss/search?q=${encoded}&hl=en-IN&gl=IN&ceid=IN:en`;
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 6000);
+
+    try {
+      const response = await fetch(url, {
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+          Accept: 'application/rss+xml, application/xml, text/xml',
+        },
+      });
+
+      clearTimeout(timeout);
+      if (!response.ok) return [];
+
+      const xmlText = await response.text();
+      const $ = cheerio.load(xmlText, { xmlMode: true });
+
+      const results: RawCandidate[] = [];
+
+      $('item').each((_, elem) => {
+        if (results.length >= maxResults) return;
+
+        const title = $(elem).find('title').text().trim();
+        const link = $(elem).find('link').text().trim();
+        const pubDate = $(elem).find('pubDate').text().trim();
+        const sourceElem = $(elem).find('source');
+        const publisher = sourceElem.text().trim() || 'Verified News Agency';
+        const sourceUrl = sourceElem.attr('url') || link;
+
+        // Clean title if publisher is repeated at end ("Headline - Publisher")
+        const cleanTitle = title.includes(' - ') ? title.split(' - ').slice(0, -1).join(' - ') : title;
+
+        if (cleanTitle && link) {
+          results.push({
+            title: cleanTitle,
+            url: link,
+            publisher,
+            snippet: `${cleanTitle}. Reporting by ${publisher}. Published on ${pubDate || 'recent news wire'}.`,
+            publishedDate: pubDate ? new Date(pubDate).toISOString().slice(0, 10) : null,
+            priorityTier: 3,
+          });
+        }
+      });
+
+      return results;
+    } catch {
+      clearTimeout(timeout);
+      return [];
+    }
+  }
+
+  /**
+   * Constructs an effective search query from the claim text
    */
   private constructSearchQuery(claimText: string): string {
-    // Clean punctuation and quotation marks
     let cleaned = claimText.replace(/[“”"']/g, ' ').replace(/\s+/g, ' ').trim();
-
-    // Strip leading conversational preambles
     cleaned = cleaned.replace(/^(According to|Researchers found that|Studies show that|A report shows that)\s+/i, '');
 
-    // Truncate to first 8-10 salient words if statement is very long
     const words = cleaned.split(' ').filter(Boolean);
     if (words.length > 9) {
       return words.slice(0, 9).join(' ');
@@ -197,7 +336,7 @@ export class EvidenceRetrieverService {
   /**
    * Queries Wikipedia Search & Summary REST API
    */
-  private async searchWikipedia(query: string): Promise<RawSearchCandidate[]> {
+  private async searchWikipedia(query: string): Promise<RawCandidate[]> {
     const encoded = encodeURIComponent(query);
     const url = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encoded}&format=json&utf8=1&srlimit=2`;
 
@@ -219,14 +358,12 @@ export class EvidenceRetrieverService {
       const data = (await response.json()) as any;
       const searchResults = data?.query?.search || [];
 
-      const candidates: RawSearchCandidate[] = [];
+      const candidates: RawCandidate[] = [];
 
       for (const res of searchResults) {
         if (!res.title) continue;
         const pageTitle = res.title;
         const pageUrl = `https://en.wikipedia.org/wiki/${encodeURIComponent(pageTitle.replace(/\s+/g, '_'))}`;
-
-        // Clean HTML snippet tags (<span class="searchmatch">...</span>)
         const cleanSnippet = (res.snippet || '').replace(/<\/?[^>]+(>|$)/g, ' ').replace(/\s+/g, ' ').trim();
 
         candidates.push({
@@ -234,6 +371,8 @@ export class EvidenceRetrieverService {
           url: pageUrl,
           publisher: 'Wikipedia',
           snippet: cleanSnippet || `Knowledge archive record for ${pageTitle}.`,
+          publishedDate: null,
+          priorityTier: 4,
         });
       }
 
@@ -247,7 +386,7 @@ export class EvidenceRetrieverService {
   /**
    * Queries Web search via DuckDuckGo HTML endpoint
    */
-  private async searchWeb(query: string): Promise<RawSearchCandidate[]> {
+  private async searchWeb(query: string, maxResults = 3): Promise<RawCandidate[]> {
     const encoded = encodeURIComponent(query);
     const searchUrl = `https://html.duckduckgo.com/html/?q=${encoded}`;
 
@@ -270,10 +409,10 @@ export class EvidenceRetrieverService {
       const html = await response.text();
       const $ = cheerio.load(html);
 
-      const candidates: RawSearchCandidate[] = [];
+      const candidates: RawCandidate[] = [];
 
       $('.result').each((_, elem) => {
-        if (candidates.length >= 3) return;
+        if (candidates.length >= maxResults) return;
 
         const titleElem = $(elem).find('.result__title a');
         const snippetElem = $(elem).find('.result__snippet');
@@ -307,15 +446,10 @@ export class EvidenceRetrieverService {
             url: targetUrl,
             publisher,
             snippet,
+            publishedDate: null,
+            priorityTier: 3,
           });
         }
-      });
-
-      // Prioritize verified news outlets and fact-checkers from Book1.xlsx
-      candidates.sort((a, b) => {
-        const aVerified = sourceRegistry.matchSource(a.url) ? 1 : 0;
-        const bVerified = sourceRegistry.matchSource(b.url) ? 1 : 0;
-        return bVerified - aVerified;
       });
 
       return candidates;
@@ -323,105 +457,6 @@ export class EvidenceRetrieverService {
       clearTimeout(timeout);
       return [];
     }
-  }
-
-  /**
-   * Classifies the source domain into institutional categories
-   */
-  private classifySourceType(urlStr: string, publisher: string): SourceType {
-    // 1. Check verified source database from Book1.xlsx
-    const registryMatch = sourceRegistry.matchSource(urlStr) || sourceRegistry.matchSource(publisher);
-    if (registryMatch) {
-      if (registryMatch.isFactChecker) return 'fact_check';
-      if (registryMatch.isWireService) return 'official';
-      return 'news';
-    }
-
-    try {
-      const url = new URL(urlStr);
-      const host = url.hostname.toLowerCase();
-
-      if (OFFICIAL_DOMAINS.some((d) => host.includes(d))) {
-        return 'official';
-      }
-      if (ACADEMIC_DOMAINS.some((d) => host.includes(d))) {
-        return 'academic';
-      }
-      if (FACT_CHECK_DOMAINS.some((d) => host.includes(d))) {
-        return 'fact_check';
-      }
-      if (NEWS_DOMAINS.some((d) => host.includes(d))) {
-        return 'news';
-      }
-    } catch {
-      // Fallback
-    }
-
-    const pubLower = publisher.toLowerCase();
-    if (pubLower.includes('fact check') || pubLower.includes('politifact') || pubLower.includes('snopes') || pubLower.includes('boom')) {
-      return 'fact_check';
-    }
-    if (pubLower.includes('reuters') || pubLower.includes('ap news') || pubLower.includes('bbc') || pubLower.includes('pti') || pubLower.includes('hindu')) {
-      return 'news';
-    }
-
-    return 'other';
-  }
-
-  /**
-   * Compares the claim text with the retrieved snippet to establish relation
-   */
-  private determineRelation(claimText: string, snippetText: string, titleText: string): EvidenceRelation {
-    const combinedEvidence = `${titleText} ${snippetText}`.toLowerCase();
-    const claimLower = claimText.toLowerCase();
-
-    // 1. Check for explicit contradiction/debunk markers
-    for (const pattern of CONTRADICT_PHRASES) {
-      if (pattern.test(combinedEvidence)) {
-        return 'contradicts';
-      }
-    }
-
-    // 2. Check for corroborating numbers / percentages
-    const numbersInClaim = claimText.match(/(\d+(\.\d+)?%|\$\d+|\b\d+\b)/g) || [];
-    let matchingNumbersCount = 0;
-    for (const num of numbersInClaim) {
-      if (num.length > 1 && combinedEvidence.includes(num.toLowerCase())) {
-        matchingNumbersCount++;
-      }
-    }
-
-    // If numerical assertions match directly
-    if (numbersInClaim.length > 0 && matchingNumbersCount >= 1) {
-      return 'supports';
-    }
-
-    // 3. Check for positive support corroboration phrases
-    for (const pattern of SUPPORT_PHRASES) {
-      if (pattern.test(combinedEvidence)) {
-        return 'supports';
-      }
-    }
-
-    // 4. Word overlap check (excluding stopwords)
-    const claimKeywords = claimLower
-      .replace(/[^\w\s]/g, '')
-      .split(/\s+/)
-      .filter((w) => w.length > 4);
-
-    let overlapCount = 0;
-    for (const word of claimKeywords) {
-      if (combinedEvidence.includes(word)) {
-        overlapCount++;
-      }
-    }
-
-    if (claimKeywords.length > 0 && overlapCount / claimKeywords.length >= 0.6) {
-      return 'supports';
-    }
-
-    // Default to unclear if evidence mentions topic but does not definitively corroborate or refute
-    return 'unclear';
   }
 
   /**
@@ -439,3 +474,4 @@ export class EvidenceRetrieverService {
 }
 
 export const evidenceRetrieverService = new EvidenceRetrieverService();
+export default evidenceRetrieverService;

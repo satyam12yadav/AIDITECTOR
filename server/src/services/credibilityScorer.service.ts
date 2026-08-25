@@ -105,8 +105,8 @@ export class CredibilityScorerService {
         continue;
       }
 
-      const hasContradiction = matchingEv.some((e) => e.relation === 'contradicts');
-      const hasSupport = matchingEv.some((e) => e.relation === 'supports');
+      const hasContradiction = matchingEv.some((e) => e.relationToClaim === 'CONTRADICTS' || e.relation === 'contradicts');
+      const hasSupport = matchingEv.some((e) => e.relationToClaim === 'SUPPORTS' || e.relation === 'supports');
 
       if (hasContradiction) {
         if (weight >= 0.7) {
@@ -126,7 +126,7 @@ export class CredibilityScorerService {
         }, 80);
         weightedSum += bestSource * weight;
       } else {
-        // Unclear: neutral 55
+        // Unclear / Insufficient: neutral 55
         weightedSum += 55 * weight;
       }
     }
@@ -203,11 +203,12 @@ export class CredibilityScorerService {
 
     for (const item of evidence) {
       const pub = (item.publisher || item.url).toLowerCase();
+      const normRelation = item.relationToClaim === 'SUPPORTS' ? 'supports' : item.relationToClaim === 'CONTRADICTS' ? 'contradicts' : item.relation || 'unclear';
       if (!domainStances.has(pub)) {
-        domainStances.set(pub, item.relation);
+        domainStances.set(pub, normRelation);
       } else {
         // If a domain has contradictory reports, prioritize contradiction flag
-        if (item.relation === 'contradicts') {
+        if (normRelation === 'contradicts') {
           domainStances.set(pub, 'contradicts');
         }
       }

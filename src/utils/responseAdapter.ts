@@ -81,36 +81,58 @@ export const transformBackendResponseToUi = (
 
         return {
           id: ev.id || `ev-${claimId}-${evIdx + 1}`,
-          sourceName: ev.publisher || ev.title || 'Independent Source',
+          sourceName: ev.sourceName || ev.publisher || ev.title || 'Independent Source',
           title: ev.title || ev.publisher || 'Independent Source',
-          publisher: ev.publisher || 'Web Source',
+          publisher: ev.sourceName || ev.publisher || 'Web Source',
           sourceType: ev.sourceType || 'news',
-          relation: ev.relation || 'unclear',
+          relation: ev.relationToClaim === 'SUPPORTS' ? 'supports' : ev.relationToClaim === 'CONTRADICTS' ? 'contradicts' : ev.relation || 'unclear',
+          relationToClaim: ev.relationToClaim || (ev.relation === 'supports' ? 'SUPPORTS' : ev.relation === 'contradicts' ? 'CONTRADICTS' : 'NEUTRAL'),
           reliabilityBadge,
           reliabilityTier,
-          quote: ev.snippet || 'Retrieved corroborating document excerpt.',
-          url: ev.url || '#',
-          isAvailable: Boolean(ev.url && ev.url !== '#'),
+          quote: ev.evidenceText || ev.snippet || 'Retrieved corroborating document excerpt.',
+          explanation: ev.explanation,
+          sourceTier: ev.sourceTier,
+          relevanceScore: ev.relevanceScore,
+          url: ev.sourceUrl || ev.url || '#',
+          isAvailable: Boolean((ev.sourceUrl || ev.url) && (ev.sourceUrl || ev.url) !== '#'),
         };
       });
 
-    // Infer claim status from retrieved evidence relations if present
+    // Determine status from Gemini forensic evaluation or evidence relations
     let inferredStatus: 'supported' | 'contradicted' | 'unverified' = 'unverified';
-    const hasContradiction = rawEvidence.some((ev: any) => (ev.claimId === claimId || ev.claimId === c.id) && ev.relation === 'contradicts');
-    const hasSupport = rawEvidence.some((ev: any) => (ev.claimId === claimId || ev.claimId === c.id) && ev.relation === 'supports');
+    let statusLabel = 'Unverified';
+    let flagReason = `Verifiable factual assertion (${importancePercent}% importance weighting).`;
 
-    if (hasContradiction) {
-      inferredStatus = 'contradicted';
-    } else if (hasSupport) {
-      inferredStatus = 'supported';
+    if (c.evaluation && c.evaluation.verdict) {
+      const v = c.evaluation.verdict;
+      if (v === 'TRUE') {
+        inferredStatus = 'supported';
+        statusLabel = 'True / Verified';
+      } else if (v === 'FALSE') {
+        inferredStatus = 'contradicted';
+        statusLabel = 'False / Refuted';
+      } else if (v === 'MISLEADING') {
+        inferredStatus = 'contradicted';
+        statusLabel = 'Misleading';
+      } else {
+        inferredStatus = 'unverified';
+        statusLabel = v === 'UNVERIFIED' ? 'Unverified' : 'Unknown';
+      }
+      flagReason = c.evaluation.reasoning || flagReason;
+    } else {
+      const hasContradiction = rawEvidence.some((ev: any) => (ev.claimId === claimId || ev.claimId === c.id) && (ev.relationToClaim === 'CONTRADICTS' || ev.relation === 'contradicts'));
+      const hasSupport = rawEvidence.some((ev: any) => (ev.claimId === claimId || ev.claimId === c.id) && (ev.relationToClaim === 'SUPPORTS' || ev.relation === 'supports'));
+
+      if (hasContradiction) {
+        inferredStatus = 'contradicted';
+        statusLabel = 'Contradicted';
+        flagReason = 'External evidence contradicts or refutes this assertion.';
+      } else if (hasSupport) {
+        inferredStatus = 'supported';
+        statusLabel = 'Supported';
+        flagReason = 'Corroborating external source retrieved.';
+      }
     }
-
-    const statusLabel =
-      inferredStatus === 'contradicted'
-        ? `Contradicted`
-        : inferredStatus === 'supported'
-        ? `Supported`
-        : `Unverified`;
 
     return {
       id: claimId,
@@ -120,12 +142,8 @@ export const transformBackendResponseToUi = (
       statusLabel,
       importance: c.importance,
       claimType: c.claim_type,
-      flagReason:
-        inferredStatus === 'contradicted'
-          ? 'External evidence contradicts or refutes this assertion.'
-          : inferredStatus === 'supported'
-          ? 'Corroborating external source retrieved.'
-          : `Extracted verifiable factual assertion (${importancePercent}% importance weighting).`,
+      flagReason,
+      evaluation: c.evaluation,
       evidence: matchingEvidence,
     };
   });
