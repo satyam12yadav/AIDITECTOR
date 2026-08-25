@@ -76,8 +76,8 @@ export class ClaimExtractorService {
       for (const rawSentence of rawSentences) {
         const sentence = rawSentence.trim();
 
-        // 1. Basic length filter
-        if (sentence.length < 20) continue;
+        // 1. Basic length filter (allow concise factual assertions >= 8 chars)
+        if (sentence.length < 8) continue;
 
         // 2. Ignore purely subjective or opinion statements
         if (this.isOpinionOrRhetoric(sentence)) continue;
@@ -86,7 +86,7 @@ export class ClaimExtractorService {
         const atomicStatements = this.decomposeCompoundSentence(sentence);
 
         for (const statement of atomicStatements) {
-          if (statement.length < 20) continue;
+          if (statement.length < 8) continue;
 
           const claimType = this.classifyClaimType(statement);
           const importance = this.calculateImportance(statement, pIndex, paragraphs.length);
