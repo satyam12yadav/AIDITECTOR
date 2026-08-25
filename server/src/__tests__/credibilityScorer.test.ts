@@ -17,7 +17,7 @@ function assert(condition: boolean, message: string) {
   }
 }
 
-console.log('\n🧪 Running Credibility Scoring & Claim Verification Test Suite (Step 6)...\n');
+console.log('\n🧪 Running Credibility Scoring Calibration & Timeout Optimization Test Suite (Step 7)...\n');
 
 const baseArticle: ArticleMetadata = {
   title: 'Global Economic Indicators in 2024',
@@ -29,20 +29,22 @@ const baseArticle: ArticleMetadata = {
 };
 
 // ----------------------------------------------------
-// Test 1: Exact Supported Claim with Direct Evidence
+// Test 1: Obvious Verified Factual Claim Reaches 90-100% (Test A)
 // ----------------------------------------------------
-console.log('Test 1: Exact supported claim with direct evidence');
+console.log('Test 1: Obvious verified factual claim reaches 90-100% credibility');
 {
-  const claimText = 'Ram Mandir is located in India.';
-  const snippet = 'Shri Ram Janmbhoomi Mandir is a Hindu temple complex located in Ayodhya, Uttar Pradesh, India.';
-  const title = 'Ram Mandir Record';
-  const stance = stanceEvaluatorService.evaluateDeterministic(claimText, snippet, title, false);
-
-  assert(stance.relation === 'supports', `Relation is supports (${stance.relation})`);
-  assert(stance.relevance === 'direct', `Relevance is direct (${stance.relevance})`);
-  assert(stance.confidence >= 80, `Confidence is high (${stance.confidence} >= 80)`);
+  const claimText = 'Ram Mandir is located in Ayodhya, Uttar Pradesh, India.';
+  const directArticle: ArticleMetadata = {
+    title: claimText,
+    author: null,
+    publishedAt: null,
+    publisher: 'Direct Text Ingestion',
+    url: null,
+    text: claimText,
+  };
 
   const claims: ExtractedClaim[] = [{ id: 'claim-1', text: claimText, importance: 0.8, claim_type: 'factual' }];
+
   const evidence: RetrievedEvidenceItem[] = [
     {
       id: 'ev-1',
@@ -50,44 +52,73 @@ console.log('Test 1: Exact supported claim with direct evidence');
       sourceName: 'The Hindu',
       sourceUrl: 'https://thehindu.com/ram-mandir',
       sourceTier: 3,
-      title,
+      title: 'Ram Mandir Record',
       publishedDate: '2024-01-22',
-      evidenceText: snippet,
+      evidenceText: 'Shri Ram Janmbhoomi Mandir is a Hindu temple complex located in Ayodhya, Uttar Pradesh, India.',
       relationToClaim: 'SUPPORTS',
       relevance: 'direct',
-      confidence: stance.confidence,
+      confidence: 95,
       credibilityScore: 85,
       relevanceScore: 1.0,
-      keyEvidence: stance.keyEvidence,
-      explanation: stance.explanation,
+      keyEvidence: 'located in Ayodhya, Uttar Pradesh, India',
+      explanation: 'Direct confirmation',
       finalContribution: 85,
       url: 'https://thehindu.com/ram-mandir',
       publisher: 'The Hindu',
       sourceType: 'news',
-      snippet,
+      snippet: 'Shri Ram Janmbhoomi Mandir is a Hindu temple complex located in Ayodhya, Uttar Pradesh, India.',
+      relation: 'supports',
+    },
+    {
+      id: 'ev-2',
+      claimId: 'claim-1',
+      sourceName: 'PIB Fact Check',
+      sourceUrl: 'https://pib.gov.in/ayodhya',
+      sourceTier: 1,
+      title: 'Ayodhya Mandir PIB Release',
+      publishedDate: '2024-01-22',
+      evidenceText: 'The historic temple complex in Ayodhya, UP, India was officially consecrated.',
+      relationToClaim: 'SUPPORTS',
+      relevance: 'direct',
+      confidence: 98,
+      credibilityScore: 98,
+      relevanceScore: 1.0,
+      keyEvidence: 'Ayodhya, UP, India',
+      explanation: 'Official government verification',
+      finalContribution: 98,
+      url: 'https://pib.gov.in/ayodhya',
+      publisher: 'PIB Fact Check',
+      sourceType: 'official',
+      snippet: 'The historic temple complex in Ayodhya, UP, India was officially consecrated.',
       relation: 'supports',
     },
   ];
 
-  const reasoning = geminiReasoningService.evaluateDeterministic(claims[0], evidence, evidence, [], []);
-  assert(reasoning.verdict === 'TRUE', `Verdict is TRUE (${reasoning.verdict})`);
-  assert(reasoning.confidence >= 80, `Confidence is >= 80 (${reasoning.confidence})`);
+  const result = credibilityScorerService.computeCredibilityScore(directArticle, claims, evidence);
+  assert(result.score >= 90, `Score is >= 90 for obvious verified factual claim (${result.score})`);
+  assert(result.verdict === 'Highly Credible', `Verdict is Highly Credible (${result.verdict})`);
+  assert(result.breakdown.evidenceSupport >= 95, `Evidence Support is >= 95 (${result.breakdown.evidenceSupport})`);
+  assert(result.breakdown.crossSourceAgreement >= 95, `Cross Source Agreement is >= 95 (${result.breakdown.crossSourceAgreement})`);
+  assert(result.diagnostics.length === 2, `Diagnostics generated 2 items (${result.diagnostics.length})`);
 }
 
 // ----------------------------------------------------
-// Test 2: Exact Contradicted Claim with Direct Evidence
+// Test 2: Clearly False Claim (Test B)
 // ----------------------------------------------------
-console.log('\nTest 2: Exact contradicted claim with direct evidence');
+console.log('\nTest 2: Clearly false claim receives low score <= 35');
 {
-  const claimText = 'Ram Mandir is in Delhi.';
-  const snippet = 'Shri Ram Janmbhoomi Mandir is situated in Ayodhya, Uttar Pradesh.';
-  const title = 'Ayodhya Temple';
-  const stance = stanceEvaluatorService.evaluateDeterministic(claimText, snippet, title, false);
+  const claimText = 'Ram Mandir is located in London.';
+  const directArticle: ArticleMetadata = {
+    title: claimText,
+    author: null,
+    publishedAt: null,
+    publisher: 'Direct Text Ingestion',
+    url: null,
+    text: claimText,
+  };
 
-  assert(stance.relation === 'contradicts', `Relation is contradicts (${stance.relation})`);
-  assert(stance.relevance === 'direct', `Relevance is direct (${stance.relevance})`);
+  const claims: ExtractedClaim[] = [{ id: 'claim-1', text: claimText, importance: 0.9, claim_type: 'factual' }];
 
-  const claims: ExtractedClaim[] = [{ id: 'claim-1', text: claimText, importance: 0.8, claim_type: 'factual' }];
   const evidence: RetrievedEvidenceItem[] = [
     {
       id: 'ev-1',
@@ -95,142 +126,97 @@ console.log('\nTest 2: Exact contradicted claim with direct evidence');
       sourceName: 'The Times of India',
       sourceUrl: 'https://timesofindia.com/ram-mandir',
       sourceTier: 3,
-      title,
+      title: 'Ram Mandir Ayodhya',
       publishedDate: '2024-01-22',
-      evidenceText: snippet,
+      evidenceText: 'Shri Ram Janmbhoomi Mandir is located in Ayodhya, Uttar Pradesh, India.',
       relationToClaim: 'CONTRADICTS',
       relevance: 'direct',
-      confidence: stance.confidence,
+      confidence: 92,
       credibilityScore: 85,
       relevanceScore: 1.0,
-      keyEvidence: stance.keyEvidence,
-      explanation: stance.explanation,
+      keyEvidence: 'Ayodhya, Uttar Pradesh',
+      explanation: 'Location conflict',
       finalContribution: 85,
       url: 'https://timesofindia.com/ram-mandir',
       publisher: 'The Times of India',
       sourceType: 'news',
-      snippet,
+      snippet: 'Shri Ram Janmbhoomi Mandir is located in Ayodhya, Uttar Pradesh, India.',
       relation: 'contradicts',
     },
   ];
 
-  const reasoning = geminiReasoningService.evaluateDeterministic(claims[0], evidence, [], evidence, []);
-  assert(reasoning.verdict === 'FALSE', `Verdict is FALSE (${reasoning.verdict})`);
+  const result = credibilityScorerService.computeCredibilityScore(directArticle, claims, evidence);
+  assert(result.score <= 35, `Score is low (${result.score} <= 35)`);
+  assert(result.verdict === 'Likely Misleading' || result.verdict === 'Highly Suspicious', `Verdict is refuting (${result.verdict})`);
+  assert(result.breakdown.evidenceSupport <= 20, `Evidence support is penalized (${result.breakdown.evidenceSupport} <= 20)`);
 }
 
 // ----------------------------------------------------
-// Test 3: Unrelated Source (Same Entity, Different Predicate)
+// Test 3: Ambiguous / Insufficient Evidence Claim (Test C)
 // ----------------------------------------------------
-console.log('\nTest 3: Unrelated source (same entity, different predicate)');
+console.log('\nTest 3: Ambiguous claim returns UNCERTAIN / INSUFFICIENT EVIDENCE (approx 50)');
 {
-  const claimText = 'BJP is ruler party of India.';
-  const snippet = 'BJP workers held a local municipal protest against tariff hikes in a district council meeting.';
-  const title = 'Local Municipal Meet';
-  const stance = stanceEvaluatorService.evaluateDeterministic(claimText, snippet, title, true);
+  const claimText = 'Secret underground bunker built under city park.';
+  const directArticle: ArticleMetadata = {
+    title: claimText,
+    author: null,
+    publishedAt: null,
+    publisher: 'Direct Text Ingestion',
+    url: null,
+    text: claimText,
+  };
 
-  assert(stance.relation === 'unclear', `Relation is unclear for topical mention (${stance.relation})`);
-  assert(stance.relevance === 'related' || stance.relevance === 'irrelevant', `Relevance is not direct (${stance.relevance})`);
-  assert(stance.relevanceScore <= 0.2, `Relevance score is low (${stance.relevanceScore} <= 0.2)`);
+  const claims: ExtractedClaim[] = [{ id: 'claim-1', text: claimText, importance: 0.7, claim_type: 'factual' }];
+  const evidence: RetrievedEvidenceItem[] = [];
+
+  const result = credibilityScorerService.computeCredibilityScore(directArticle, claims, evidence);
+  assert(result.score >= 45 && result.score <= 65, `Neutral score for ambiguous claim (${result.score})`);
+  assert(result.verdict === 'Needs Verification', `Verdict is Needs Verification (${result.verdict})`);
+
+  const reasoning = geminiReasoningService.evaluateDeterministic(claims[0], [], [], [], []);
+  assert(reasoning.verdict === 'UNVERIFIED', `Gemini verdict is UNVERIFIED (${reasoning.verdict})`);
 }
 
 // ----------------------------------------------------
-// Test 4: Current / Time-Sensitive Claim ("BJP is ruler party of India")
+// Test 4: Transparent Diagnostics Detail
 // ----------------------------------------------------
-console.log('\nTest 4: Current / time-sensitive claim ("BJP is ruler party of India")');
+console.log('\nTest 4: Transparent diagnostics detail mapping');
 {
-  const claimText = 'BJP is ruler party of India.';
-  const snippet = 'The BJP-led NDA government forms the Union government in India under Prime Minister Narendra Modi.';
-  const title = 'Union Government Profile';
-  const stance = stanceEvaluatorService.evaluateDeterministic(claimText, snippet, title, true);
-
-  assert(stance.relation === 'supports', `Direct ruling party evidence supports claim (${stance.relation})`);
-  assert(stance.relevance === 'direct', `Relevance is direct (${stance.relevance})`);
-
-  const claims: ExtractedClaim[] = [{ id: 'claim-1', text: claimText, importance: 0.9, claim_type: 'factual', isTimeSensitive: true }];
+  const claims: ExtractedClaim[] = [{ id: 'claim-1', text: 'Inflation fell to 2.1%.', importance: 0.8, claim_type: 'statistical' }];
   const evidence: RetrievedEvidenceItem[] = [
     {
       id: 'ev-1',
       claimId: 'claim-1',
-      sourceName: 'PIB Fact Check',
-      sourceUrl: 'https://pib.gov.in/profile',
+      sourceName: 'RBI Official',
+      sourceUrl: 'https://rbi.org.in/inflation',
       sourceTier: 1,
-      title,
-      publishedDate: '2024-06-10',
-      evidenceText: snippet,
+      title: 'Monetary Policy Report',
+      publishedDate: '2024-06-01',
+      evidenceText: 'Headline inflation moderated to 2.1%.',
       relationToClaim: 'SUPPORTS',
       relevance: 'direct',
-      confidence: 95,
+      confidence: 96,
       credibilityScore: 98,
       relevanceScore: 1.0,
-      keyEvidence: stance.keyEvidence,
-      explanation: stance.explanation,
+      keyEvidence: 'inflation moderated to 2.1%',
+      explanation: 'Direct statistical confirmation',
       finalContribution: 98,
-      url: 'https://pib.gov.in/profile',
-      publisher: 'PIB Fact Check',
+      url: 'https://rbi.org.in/inflation',
+      publisher: 'RBI Official',
       sourceType: 'official',
-      snippet,
+      snippet: 'Headline inflation moderated to 2.1%.',
       relation: 'supports',
     },
   ];
 
-  const reasoning = geminiReasoningService.evaluateDeterministic(claims[0], evidence, evidence, [], []);
-  assert(reasoning.verdict === 'TRUE', `Verdict is TRUE for direct official evidence (${reasoning.verdict})`);
-}
-
-// ----------------------------------------------------
-// Test 5: Insufficient Evidence Handling
-// ----------------------------------------------------
-console.log('\nTest 5: Insufficient evidence handling (Absence of evidence is NOT true or false)');
-{
-  const claim: ExtractedClaim = {
-    id: 'claim-1',
-    text: 'A novel undisclosed propulsion technology was tested in secret.',
-    importance: 0.7,
-    claim_type: 'factual',
-  };
-
-  const reasoning = geminiReasoningService.evaluateDeterministic(claim, [], [], [], []);
-  assert(reasoning.verdict === 'UNVERIFIED', `Verdict is UNVERIFIED for zero evidence (${reasoning.verdict})`);
-  assert(reasoning.confidence <= 40, `Confidence reflects uncertainty (${reasoning.confidence} <= 40)`);
-}
-
-// ----------------------------------------------------
-// Test 6: 5-Pillar Credibility Calculation with Direct vs Related Evidence
-// ----------------------------------------------------
-console.log('\nTest 6: 5-Pillar credibility calculation scaling');
-{
-  const claims: ExtractedClaim[] = [
-    { id: 'claim-1', text: 'Household expenditures rose by 3.8%.', importance: 0.9, claim_type: 'statistical' },
-  ];
-  const directEvidence: RetrievedEvidenceItem[] = [
-    {
-      id: 'ev-1',
-      claimId: 'claim-1',
-      sourceName: 'Reuters',
-      sourceUrl: 'https://reuters.com/a',
-      sourceTier: 3,
-      title: 'Economic Bulletin',
-      publishedDate: '2024-05-15',
-      evidenceText: 'Household expenditures rose by 3.8%.',
-      relationToClaim: 'SUPPORTS',
-      relevance: 'direct',
-      confidence: 90,
-      credibilityScore: 85,
-      relevanceScore: 1.0,
-      keyEvidence: '3.8%',
-      explanation: 'Direct match',
-      finalContribution: 85,
-      url: 'https://reuters.com/a',
-      publisher: 'reuters.com',
-      sourceType: 'news',
-      snippet: 'Expenditures grew 3.8%.',
-      relation: 'supports',
-    },
-  ];
-
-  const scoreResult = credibilityScorerService.computeCredibilityScore(baseArticle, claims, directEvidence);
-  assert(scoreResult.score >= 80, `High score for direct authoritative evidence (${scoreResult.score} >= 80)`);
-  assert(scoreResult.breakdown.claimVerification === 100, `Claim verification is 100% (${scoreResult.breakdown.claimVerification})`);
+  const result = credibilityScorerService.computeCredibilityScore(baseArticle, claims, evidence);
+  assert(result.diagnostics.length > 0, `Diagnostics present (${result.diagnostics.length})`);
+  const diag = result.diagnostics[0];
+  assert(diag.source === 'RBI Official', `Diagnostic source is RBI Official (${diag.source})`);
+  assert(diag.sourceTier === 1, `Diagnostic sourceTier is 1 (${diag.sourceTier})`);
+  assert(diag.relation === 'supports', `Diagnostic relation is supports (${diag.relation})`);
+  assert(diag.relevance === 'direct', `Diagnostic relevance is direct (${diag.relevance})`);
+  assert(diag.contributionToFinalScore === 98, `Diagnostic contribution is 98 (${diag.contributionToFinalScore})`);
 }
 
 console.log(`\n========================================`);

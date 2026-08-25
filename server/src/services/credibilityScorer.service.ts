@@ -4,6 +4,7 @@ import {
   RetrievedEvidenceItem,
   ScoreBreakdown,
   CredibilityVerdict,
+  ScoreDiagnosticItem,
 } from '../types/api.js';
 import { sourceRegistry } from './sourceRegistry.service.js';
 
@@ -14,11 +15,12 @@ export interface CredibilityScoreResult {
   confidence: number;
   summary: string;
   limitations: string[];
+  diagnostics: ScoreDiagnosticItem[];
 }
 
 export class CredibilityScorerService {
   /**
-   * Computes deterministic, explainable credibility score from 0-100
+   * Computes deterministic, calibrated credibility score from 0-100
    */
   public computeCredibilityScore(
     article: ArticleMetadata,
@@ -32,9 +34,9 @@ export class CredibilityScorerService {
     const sourceReliability = this.calculateSourceReliability(article, evidence, limitations);
     const crossSourceAgreement = this.calculateCrossSourceAgreement(evidence, limitations);
     const claimVerification = this.calculateClaimVerification(claims, evidence, limitations);
-    const articleQuality = this.calculateArticleQuality(article, limitations);
+    const articleQuality = this.calculateArticleQuality(article, claims, evidence, limitations);
 
-    // 2. Apply explicit weighted formula:
+    // 2. Apply calibrated weighted formula:
     // finalScore = evidenceSupport * 0.30 + sourceReliability * 0.25 + crossSourceAgreement * 0.20 + claimVerification * 0.15 + articleQuality * 0.10
     const rawScore =
       evidenceSupport * 0.30 +
@@ -60,6 +62,9 @@ export class CredibilityScorerService {
       articleQuality,
     });
 
+    // 6. Generate transparent diagnostics (Requirement 10)
+    const diagnostics = this.generateDiagnostics(claims, evidence);
+
     return {
       score: finalScore,
       verdict,
@@ -73,13 +78,13 @@ export class CredibilityScorerService {
       confidence,
       summary,
       limitations,
+      diagnostics,
     };
   }
 
   /**
    * Component 1: Evidence Support (30% weight)
-   * Evaluates retrieved evidence strength per claim weighted by importance.
-   * Contradicted claims heavily penalize score; unverified claims default to neutral 50.
+   * DIRECT evidence carries full weight; RELATED carries low weight (max 55); CONTRADICT carries 0.
    */
   public calculateEvidenceSupport(
     claims: ExtractedClaim[],
@@ -105,28 +110,37 @@ export class CredibilityScorerService {
         continue;
       }
 
-      const hasContradiction = matchingEv.some((e) => e.relationToClaim === 'CONTRADICTS' || e.relation === 'contradicts');
-      const hasSupport = matchingEv.some((e) => e.relationToClaim === 'SUPPORTS' || e.relation === 'supports');
+      const directContradictions = matchingEv.filter(
+        (e) =>
+          (e.relationToClaim === 'CONTRADICTS' || e.relation === 'contradicts') &&
+          (e.relevance === 'direct' || !e.relevance)
+      );
 
-      if (hasContradiction) {
+      const directSupports = matchingEv.filter(
+        (e) =>
+          (e.relationToClaim === 'SUPPORTS' || e.relation === 'supports') &&
+          (e.relevance === 'direct' || !e.relevance)
+      );
+
+      if (directContradictions.length > 0) {
         if (weight >= 0.7) {
           hasHighImportanceContradiction = true;
         }
         weightedSum += 0 * weight; // Contradiction: 0 score
-      } else if (hasSupport) {
-        // Supported: evaluate high-trust vs standard sources
-        const bestSource = matchingEv.reduce((acc, curr) => {
-          const evalResult = sourceRegistry.getSourceCredibility(curr.publisher || curr.url);
-          const score = evalResult.isRegistered
-            ? evalResult.credibilityWeight * 100
-            : curr.sourceType === 'official' || curr.sourceType === 'academic' || curr.sourceType === 'fact_check'
-            ? 95
-            : 85;
+      } else if (directSupports.length > 0) {
+        // Evaluate direct support strength based on source tiers and count
+        const maxSourceScore = directSupports.reduce((acc, curr) => {
+          const score = curr.credibilityScore || 85;
           return Math.max(acc, score);
-        }, 80);
-        weightedSum += bestSource * weight;
+        }, 85);
+
+        // Multi-source bonus if multiple independent direct sources support the claim
+        const multiSourceBonus = directSupports.length >= 2 ? 5 : 0;
+        const claimScore = Math.min(100, maxSourceScore + multiSourceBonus);
+
+        weightedSum += claimScore * weight;
       } else {
-        // Unclear / Insufficient: neutral 55
+        // Only related or unclear context: neutral 55
         weightedSum += 55 * weight;
       }
     }
@@ -154,16 +168,16 @@ export class CredibilityScorerService {
 
     // Register evidence source scores (deduplicated by publisher domain)
     for (const item of evidence) {
-      const pub = (item.publisher || item.url).toLowerCase();
+      const pub = (item.sourceName || item.publisher || item.url).toLowerCase();
       if (!publisherScores.has(pub)) {
         const evalResult = sourceRegistry.getSourceCredibility(pub);
-        publisherScores.set(pub, Math.round(evalResult.credibilityWeight * 100));
+        const score = item.credibilityScore || Math.round(evalResult.credibilityWeight * 100);
+        publisherScores.set(pub, score);
       }
     }
 
     if (publisherScores.size === 0) {
       limitations.push('No independent external sources were retrieved to establish empirical source reliability.');
-      // Check if the ingested article itself is from our verified database
       if (article.publisher && article.publisher !== 'Direct Text Ingestion') {
         const evalResult = sourceRegistry.getSourceCredibility(article.url || article.publisher);
         if (evalResult.isRegistered) {
@@ -199,17 +213,19 @@ export class CredibilityScorerService {
     }
 
     // Deduplicate by publisher to prevent duplicate URL votes
-    const domainStances = new Map<string, 'supports' | 'contradicts' | 'unclear'>();
+    const domainStances = new Map<string, { relation: 'supports' | 'contradicts' | 'unclear'; relevance: string }>();
 
     for (const item of evidence) {
-      const pub = (item.publisher || item.url).toLowerCase();
-      const normRelation = item.relationToClaim === 'SUPPORTS' ? 'supports' : item.relationToClaim === 'CONTRADICTS' ? 'contradicts' : item.relation || 'unclear';
+      const pub = (item.sourceName || item.publisher || item.url).toLowerCase();
+      const normRelation =
+        item.relationToClaim === 'SUPPORTS' ? 'supports' : item.relationToClaim === 'CONTRADICTS' ? 'contradicts' : item.relation || 'unclear';
+      const relevance = item.relevance || 'direct';
+
       if (!domainStances.has(pub)) {
-        domainStances.set(pub, normRelation);
+        domainStances.set(pub, { relation: normRelation, relevance });
       } else {
-        // If a domain has contradictory reports, prioritize contradiction flag
         if (normRelation === 'contradicts') {
-          domainStances.set(pub, 'contradicts');
+          domainStances.set(pub, { relation: 'contradicts', relevance });
         }
       }
     }
@@ -217,37 +233,40 @@ export class CredibilityScorerService {
     const uniqueCount = domainStances.size;
 
     if (uniqueCount === 1) {
-      limitations.push('Cross-source verification is limited because evidence originates from a single publisher.');
-      const singleRelation = Array.from(domainStances.values())[0];
-      if (singleRelation === 'supports') return 75;
-      if (singleRelation === 'contradicts') return 20;
+      const single = Array.from(domainStances.values())[0];
+      if (single.relation === 'supports' && single.relevance === 'direct') return 88;
+      if (single.relation === 'contradicts' && single.relevance === 'direct') return 15;
       return 55;
     }
 
-    let supportCount = 0;
-    let contradictCount = 0;
+    let directSupportCount = 0;
+    let directContradictCount = 0;
     let unclearCount = 0;
 
-    domainStances.forEach((relation) => {
-      if (relation === 'supports') supportCount++;
-      else if (relation === 'contradicts') contradictCount++;
+    domainStances.forEach((st) => {
+      if (st.relation === 'supports' && st.relevance === 'direct') directSupportCount++;
+      else if (st.relation === 'contradicts' && st.relevance === 'direct') directContradictCount++;
       else unclearCount++;
     });
 
-    if (contradictCount > 0 && supportCount > 0) {
-      // Direct conflict across independent sources
-      const agreementRatio = supportCount / (supportCount + contradictCount);
+    if (directContradictCount > 0 && directSupportCount > 0) {
+      // Conflict
+      const agreementRatio = directSupportCount / (directSupportCount + directContradictCount);
       return Math.max(10, Math.min(60, Math.round(agreementRatio * 60)));
     }
 
-    if (contradictCount > 0 && supportCount === 0) {
+    if (directContradictCount > 0 && directSupportCount === 0) {
       // Unanimous contradiction
       return 10;
     }
 
-    if (supportCount >= 2 && contradictCount === 0) {
-      // Strong cross-source agreement
-      return Math.min(100, 85 + supportCount * 5);
+    if (directSupportCount >= 2 && directContradictCount === 0) {
+      // Strong cross-source agreement across verified independent outlets
+      return Math.min(100, 92 + directSupportCount * 4);
+    }
+
+    if (directSupportCount === 1 && directContradictCount === 0) {
+      return 88;
     }
 
     return 50; // Unclear / neutral
@@ -255,7 +274,7 @@ export class CredibilityScorerService {
 
   /**
    * Component 4: Claim Verification (15% weight)
-   * Evaluates the proportion of verified claims weighted by importance.
+   * Evaluates proportion of verified claims weighted by importance.
    */
   public calculateClaimVerification(
     claims: ExtractedClaim[],
@@ -276,24 +295,28 @@ export class CredibilityScorerService {
       const matchingEv = evidence.filter((e) => e.claimId === claim.id);
 
       if (matchingEv.length === 0) {
-        // Unverified: 50
         weightedSum += 50 * weight;
         if (weight >= 0.8) {
           limitations.push(`High-priority claim '${claim.text.slice(0, 50)}...' could not be independently verified.`);
         }
       } else {
-        const hasContradict = matchingEv.some((e) => e.relation === 'contradicts');
-        const hasSupport = matchingEv.some((e) => e.relation === 'supports');
+        const hasDirectContradict = matchingEv.some(
+          (e) =>
+            (e.relationToClaim === 'CONTRADICTS' || e.relation === 'contradicts') &&
+            (e.relevance === 'direct' || !e.relevance)
+        );
+        const hasDirectSupport = matchingEv.some(
+          (e) =>
+            (e.relationToClaim === 'SUPPORTS' || e.relation === 'supports') &&
+            (e.relevance === 'direct' || !e.relevance)
+        );
 
-        if (hasContradict) {
-          // Contradicted: 0
+        if (hasDirectContradict) {
           weightedSum += 0 * weight;
-        } else if (hasSupport) {
-          // Supported: 100
+        } else if (hasDirectSupport) {
           weightedSum += 100 * weight;
         } else {
-          // Partially supported / unclear: 70
-          weightedSum += 70 * weight;
+          weightedSum += 55 * weight;
         }
       }
     }
@@ -304,9 +327,27 @@ export class CredibilityScorerService {
 
   /**
    * Component 5: Article Quality (10% weight)
-   * Evaluates concrete structural signals from the article metadata.
+   * Evaluates concrete structural signals. Direct concise claims are not penalized if clean.
    */
-  public calculateArticleQuality(article: ArticleMetadata, limitations: string[]): number {
+  public calculateArticleQuality(
+    article: ArticleMetadata,
+    claims: ExtractedClaim[],
+    evidence: RetrievedEvidenceItem[],
+    limitations: string[]
+  ): number {
+    const isDirectIngestion = !article.publisher || article.publisher === 'Direct Text Ingestion';
+
+    if (isDirectIngestion) {
+      // For direct claim submissions, check if claims are verified and clean
+      const hasVerifiedClaims = evidence.some(
+        (e) => (e.relationToClaim === 'SUPPORTS' || e.relation === 'supports') && e.relevance === 'direct'
+      );
+      if (hasVerifiedClaims) {
+        return 90; // Clean factual statement verified directly
+      }
+      return 70; // Neutral baseline for unverified direct text
+    }
+
     let score = 0;
 
     // 1. Text length completeness (30 max)
@@ -321,7 +362,7 @@ export class CredibilityScorerService {
     }
 
     // 2. Identifiable Publisher (20 max)
-    if (article.publisher && article.publisher !== 'Direct Text Ingestion' && article.publisher.length > 3) {
+    if (article.publisher && article.publisher.length > 3) {
       score += 20;
     } else {
       score += 10;
@@ -354,6 +395,35 @@ export class CredibilityScorerService {
   }
 
   /**
+   * Generates transparent per-claim, per-evidence score diagnostics
+   */
+  private generateDiagnostics(
+    claims: ExtractedClaim[],
+    evidence: RetrievedEvidenceItem[]
+  ): ScoreDiagnosticItem[] {
+    const diagnostics: ScoreDiagnosticItem[] = [];
+
+    for (const claim of claims) {
+      const matchingEv = evidence.filter((e) => e.claimId === claim.id);
+      for (const ev of matchingEv) {
+        diagnostics.push({
+          claim: claim.text,
+          evidence: ev.evidenceText || ev.snippet,
+          source: ev.sourceName || ev.publisher,
+          sourceTier: ev.sourceTier || 3,
+          relation: ev.relation || (ev.relationToClaim === 'SUPPORTS' ? 'supports' : 'unclear'),
+          relevance: ev.relevance || 'direct',
+          evidenceConfidence: ev.confidence || 85,
+          sourceReliability: ev.credibilityScore,
+          contributionToFinalScore: ev.finalContribution || ev.credibilityScore,
+        });
+      }
+    }
+
+    return diagnostics;
+  }
+
+  /**
    * Maps numerical score to official Verdict category
    */
   public getVerdict(score: number): CredibilityVerdict {
@@ -365,31 +435,30 @@ export class CredibilityScorerService {
   }
 
   /**
-   * Calculates confidence score based on evidence coverage and source diversity
+   * Calculates overall confidence (0.0 to 1.0)
    */
-  private calculateConfidence(
+  public calculateConfidence(
     claims: ExtractedClaim[],
     evidence: RetrievedEvidenceItem[],
     article: ArticleMetadata
   ): number {
-    if (!claims || claims.length === 0) {
-      return 0.3;
+    let conf = 0.5;
+
+    if (evidence.length >= 3) conf += 0.25;
+    else if (evidence.length >= 1) conf += 0.15;
+
+    const hasHighTier = evidence.some((e) => (e.sourceTier || 3) <= 2);
+    if (hasHighTier) conf += 0.15;
+
+    if (article.publisher && article.publisher !== 'Direct Text Ingestion') {
+      conf += 0.1;
     }
 
-    const verifiedClaimsCount = claims.filter((c) =>
-      evidence.some((e) => e.claimId === c.id)
-    ).length;
-
-    const coverage = verifiedClaimsCount / claims.length;
-    const uniqueSources = new Set(evidence.map((e) => e.publisher)).size;
-    const sourceFactor = Math.min(1, uniqueSources / 3);
-
-    const rawConfidence = 0.4 + coverage * 0.4 + sourceFactor * 0.2;
-    return Math.round(Math.max(0.2, Math.min(0.98, rawConfidence)) * 100) / 100;
+    return Math.min(0.99, Math.max(0.3, Math.round(conf * 100) / 100));
   }
 
   /**
-   * Generates a transparent narrative summary of the scoring calculation
+   * Generates transparent summary text
    */
   private generateSummary(
     score: number,
@@ -398,35 +467,28 @@ export class CredibilityScorerService {
     evidence: RetrievedEvidenceItem[],
     breakdown: ScoreBreakdown
   ): string {
-    const supportedCount = claims.filter((c) =>
-      evidence.some((e) => e.claimId === c.id && e.relation === 'supports')
+    const verifiedCount = evidence.filter(
+      (e) => (e.relationToClaim === 'SUPPORTS' || e.relation === 'supports') && e.relevance === 'direct'
+    ).length;
+    const contradictedCount = evidence.filter(
+      (e) => (e.relationToClaim === 'CONTRADICTS' || e.relation === 'contradicts') && e.relevance === 'direct'
     ).length;
 
-    const contradictedCount = claims.filter((c) =>
-      evidence.some((e) => e.claimId === c.id && e.relation === 'contradicts')
-    ).length;
-
-    if (verdict === 'Highly Credible') {
-      return `All core factual claims are robustly corroborated by high-authority institutional sources with zero detected contradictions (${supportedCount}/${claims.length} claims verified).`;
+    if (score >= 90) {
+      return `Content verified with exceptionally high credibility (${score}/100). All core assertions are directly corroborated by independent, high-trust primary sources.`;
     }
-
-    if (verdict === 'Probably Credible') {
-      return `Most key factual claims (${supportedCount}/${claims.length}) are supported by reputable independent sources, with strong cross-source agreement and no material refutations.`;
+    if (score >= 80) {
+      return `Content displays strong empirical credibility (${score}/100). Multiple assertions are corroborated across reputable independent outlets.`;
     }
-
-    if (verdict === 'Needs Verification') {
-      if (evidence.length === 0) {
-        return `Independent external evidence could not be located to verify the claims. The content remains unverified pending corroboration.`;
-      }
-      return `Initial claims have partial corroboration, but certain assertions remain unverified or have ambiguous cross-source evidence.`;
-    }
-
-    if (verdict === 'Likely Misleading') {
+    if (score <= 35 || contradictedCount > 0) {
       return `One or more significant factual claims (${contradictedCount} contradicted) conflict with independent verified records or official sources.`;
     }
-
-    return `Critical factual claims are explicitly contradicted by reliable external sources and fact-checking registries.`;
+    if (evidence.length === 0) {
+      return 'Independent external evidence could not be located to verify the claims. The content remains unverified pending corroboration.';
+    }
+    return `Initial claims have partial corroboration (${verifiedCount} verified), but certain assertions remain unverified or have ambiguous cross-source evidence.`;
   }
 }
 
 export const credibilityScorerService = new CredibilityScorerService();
+export default credibilityScorerService;

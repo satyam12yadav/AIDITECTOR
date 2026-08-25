@@ -38,7 +38,9 @@ export class EvidenceRetrieverService {
       return [];
     }
 
-    const prioritizedClaims = claims.slice(0, 5);
+    const tStart = Date.now();
+    const prioritizedClaims = claims.slice(0, 3); // Prioritize top 3 most important claims for high speed
+
     const evidencePromises = prioritizedClaims.map(async (claim) => {
       const isTimeSensitive = TIME_SENSITIVE_TRIGGERS.some((pat) => pat.test(claim.text));
       claim.isTimeSensitive = isTimeSensitive;
@@ -51,12 +53,21 @@ export class EvidenceRetrieverService {
       }));
     });
 
-    const results = await Promise.all(evidencePromises);
-    return results.flat();
+    const results = await Promise.allSettled(evidencePromises);
+    const flattened: RetrievedEvidenceItem[] = [];
+    for (const r of results) {
+      if (r.status === 'fulfilled' && Array.isArray(r.value)) {
+        flattened.push(...r.value);
+      }
+    }
+
+    console.log(`[TIMING] Multi-source evidence retrieval completed in ${Date.now() - tStart}ms (total items: ${flattened.length})`);
+    return flattened;
   }
 
   /**
    * Multi-Source Evidence Retrieval Pipeline for an individual claim
+   * Parallelizes searches with strict timeouts and early returns
    */
   private async retrieveForClaim(
     claim: ExtractedClaim,
@@ -77,123 +88,105 @@ export class EvidenceRetrieverService {
       }
     };
 
-    // -------------------------------------------------------------
-    // Stage 1: Google Fact Check Tools API Search
-    // -------------------------------------------------------------
-    try {
-      const factChecks = await googleFactCheckService.searchFactChecks(query);
-      for (const fc of factChecks) {
-        addCandidate({
-          title: fc.title,
-          url: fc.url,
-          publisher: fc.publisher,
-          snippet: fc.snippet,
-          publishedDate: fc.publishedDate,
-          priorityTier: 2, // Established fact-check tier
-        });
-      }
-    } catch {
-      // Non-blocking stage failure
-    }
-
-    // -------------------------------------------------------------
-    // Stage 2: Live News Wires & Broadsheets via Google News RSS
-    // -------------------------------------------------------------
-    try {
-      const newsRssResults = await this.searchGoogleNewsRss(query, 5);
-      for (const nr of newsRssResults) {
-        const regCheck = sourceRegistry.matchSource(nr.url) || sourceRegistry.matchSource(nr.publisher);
-        const tier = regCheck ? regCheck.credibilityTier : 3;
-        addCandidate({
-          ...nr,
-          priorityTier: tier,
-        });
-      }
-
-      // If claim mentions specific prominent entities (e.g. Ram Mandir, Chandrayaan), also retrieve entity truth
-      if (claim.entities?.events && claim.entities.events.length > 0) {
-        for (const ev of claim.entities.events) {
-          const entityNews = await this.searchGoogleNewsRss(`${ev} location`, 3);
-          for (const en of entityNews) {
-            addCandidate(en);
-          }
-          const wikiEntity = await this.searchWikipedia(ev);
-          for (const we of wikiEntity) {
-            addCandidate({ ...we, priorityTier: 4 });
-          }
-        }
-      }
-
-      // For ruling party / political power claims, also search current government election outcome
-      if (isTimeSensitive && /\b(ruler party|ruling party|in power)\b/i.test(claim.text)) {
-        const polNews = await this.searchGoogleNewsRss(`India Union government ruling party election`, 3);
-        for (const pn of polNews) {
-          addCandidate(pn);
-        }
-      }
-    } catch {
-      // Non-blocking
-    }
-
-    // -------------------------------------------------------------
-    // Stage 3: Targeted Institutional / Government Search (if triggered)
-    // -------------------------------------------------------------
     const isInstitutional = INSTITUTIONAL_TRIGGERS.some((pat) => pat.test(claim.text));
+
+    // -------------------------------------------------------------
+    // Parallel Stage Execution (FactCheck + GoogleNewsRSS + Web + Institutional)
+    // -------------------------------------------------------------
+    const searchTasks: Promise<void>[] = [
+      // 1. Google Fact Check API
+      googleFactCheckService
+        .searchFactChecks(query)
+        .then((fcs) => {
+          for (const fc of fcs) {
+            addCandidate({
+              title: fc.title,
+              url: fc.url,
+              publisher: fc.publisher,
+              snippet: fc.snippet,
+              publishedDate: fc.publishedDate,
+              priorityTier: 2,
+            });
+          }
+        })
+        .catch(() => {}),
+
+      // 2. Google News RSS Live Wires
+      this.searchGoogleNewsRss(query, 4)
+        .then((nrs) => {
+          for (const nr of nrs) {
+            const regCheck = sourceRegistry.matchSource(nr.url) || sourceRegistry.matchSource(nr.publisher);
+            const tier = regCheck ? regCheck.credibilityTier : 3;
+            addCandidate({ ...nr, priorityTier: tier });
+          }
+        })
+        .catch(() => {}),
+
+      // 3. DuckDuckGo Web Search
+      this.searchWeb(query, 3)
+        .then((wrs) => {
+          for (const wr of wrs) {
+            const regCheck = sourceRegistry.matchSource(wr.url) || sourceRegistry.matchSource(wr.publisher);
+            const tier = regCheck ? regCheck.credibilityTier : 3;
+            addCandidate({ ...wr, priorityTier: tier });
+          }
+        })
+        .catch(() => {}),
+    ];
+
+    // Optional Institutional search
     if (isInstitutional) {
-      try {
-        const govQuery = `${query} (site:gov.in OR site:nic.in OR site:pib.gov.in OR site:rbi.org.in OR site:who.int OR site:un.org)`;
-        const govResults = await this.searchWeb(govQuery, 2);
-        for (const g of govResults) {
-          addCandidate({
-            ...g,
-            priorityTier: 1, // Official government authority
-          });
-        }
-      } catch {
-        // Non-blocking
-      }
+      const govQuery = `${query} (site:gov.in OR site:nic.in OR site:pib.gov.in OR site:rbi.org.in OR site:who.int OR site:un.org)`;
+      searchTasks.push(
+        this.searchWeb(govQuery, 2)
+          .then((grs) => {
+            for (const g of grs) {
+              addCandidate({ ...g, priorityTier: 1 });
+            }
+          })
+          .catch(() => {})
+      );
     }
 
-    // -------------------------------------------------------------
-    // Stage 4: Authoritative Web & 54-Source Registry Search
-    // -------------------------------------------------------------
-    try {
-      const webResults = await this.searchWeb(query, 3);
-      for (const n of webResults) {
-        const regCheck = sourceRegistry.matchSource(n.url) || sourceRegistry.matchSource(n.publisher);
-        const tier = regCheck ? regCheck.credibilityTier : 3;
-        addCandidate({
-          ...n,
-          priorityTier: tier,
-        });
-      }
-    } catch {
-      // Non-blocking
-    }
+    // Execute all primary search tasks in parallel with Promise.allSettled
+    await Promise.allSettled(searchTasks);
 
     // -------------------------------------------------------------
-    // Stage 5: Supplementary Wikipedia Fallback (Strictly Secondary)
+    // Secondary Fallback (Only if fewer than 2 candidates retrieved)
     // -------------------------------------------------------------
     if (rawCandidates.length < 2) {
-      try {
-        const wikiResults = await this.searchWikipedia(query);
-        for (const w of wikiResults) {
-          addCandidate({
-            ...w,
-            priorityTier: 4, // Secondary reference tier
-          });
-        }
-      } catch {
-        // Non-blocking
+      const fallbackTasks: Promise<void>[] = [
+        this.searchWikipedia(query)
+          .then((wrs) => {
+            for (const w of wrs) {
+              addCandidate({ ...w, priorityTier: 4 });
+            }
+          })
+          .catch(() => {}),
+      ];
+
+      if (claim.entities?.events && claim.entities.events.length > 0) {
+        const ev = claim.entities.events[0];
+        fallbackTasks.push(
+          this.searchGoogleNewsRss(`${ev} location`, 2)
+            .then((nrs) => {
+              for (const nr of nrs) addCandidate(nr);
+            })
+            .catch(() => {})
+        );
       }
+
+      await Promise.allSettled(fallbackTasks);
     }
 
-    // -------------------------------------------------------------
-    // Stage 6: Claim-Level Exact Verification, Relevance & Detailed Logging
-    // -------------------------------------------------------------
-    const evidenceList: Omit<RetrievedEvidenceItem, 'id' | 'claimId'>[] = [];
+    // Filter to top 4 highest-priority candidates for fast stance evaluation
+    rawCandidates.sort((a, b) => a.priorityTier - b.priorityTier);
+    const prioritizedCandidates = rawCandidates.slice(0, 4);
 
-    for (const candidate of rawCandidates) {
+    // -------------------------------------------------------------
+    // Concurrent Claim-Level Stance Evaluation
+    // -------------------------------------------------------------
+    const stancePromises = prioritizedCandidates.map(async (candidate) => {
       const sourceEval =
         sourceRegistry.getSourceCredibility(candidate.publisher) ||
         sourceRegistry.getSourceCredibility(candidate.url);
@@ -201,7 +194,7 @@ export class EvidenceRetrieverService {
       const resolvedName = sourceEval.isRegistered ? sourceEval.name : decode(candidate.publisher);
       const credScore = Math.round(sourceEval.credibilityWeight * 100);
 
-      // Perform exact claim-level evidence verification
+      // Perform exact claim-level evidence verification with 3.5s timeout
       const stance = await stanceEvaluatorService.evaluateStance(
         claim.text,
         candidate.snippet,
@@ -210,10 +203,6 @@ export class EvidenceRetrieverService {
         isTimeSensitive
       );
 
-      // Final contribution calculation based on relevance
-      // direct -> 100% of source credibility
-      // related -> 20% of source credibility (very low weight)
-      // irrelevant -> 0% contribution
       const relevanceMultiplier = stance.relevance === 'direct' ? 1.0 : stance.relevance === 'related' ? 0.2 : 0.0;
       const finalContribution = Math.round(credScore * relevanceMultiplier);
 
@@ -226,7 +215,7 @@ export class EvidenceRetrieverService {
           ? 'news'
           : 'other';
 
-      // Detailed Forensic Logging (Requirement 18)
+      // Log transparent diagnostics
       console.log(`\n============================================================`);
       console.log(`[CLAIM-LEVEL EVIDENCE EVALUATION]`);
       console.log(`  CLAIM: "${claim.text}"`);
@@ -239,7 +228,7 @@ export class EvidenceRetrieverService {
       console.log(`  KEY EVIDENCE: "${stance.keyEvidence || 'None'}"`);
       console.log(`============================================================\n`);
 
-      evidenceList.push({
+      return {
         sourceName: resolvedName,
         sourceUrl: candidate.url,
         sourceTier: sourceEval.credibilityTier,
@@ -255,35 +244,41 @@ export class EvidenceRetrieverService {
         explanation: stance.explanation,
         finalContribution,
 
-        // Legacy compatibility
         url: candidate.url,
         publisher: resolvedName,
         sourceType,
         snippet: decode(candidate.snippet),
         relation: stance.relation,
-      });
+      };
+    });
+
+    const evaluatedResults = await Promise.allSettled(stancePromises);
+    const evidenceList: Omit<RetrievedEvidenceItem, 'id' | 'claimId'>[] = [];
+    for (const r of evaluatedResults) {
+      if (r.status === 'fulfilled' && r.value) {
+        evidenceList.push(r.value);
+      }
     }
 
-    // Rank evidence: Sort by composite score: Final Contribution + Higher Tier Bonus + Relevance Score
+    // Rank evidence: Final Contribution + Higher Tier Bonus + Relevance Score
     evidenceList.sort((a, b) => {
       const scoreA = a.finalContribution * 0.7 + a.relevanceScore * 30 + (6 - a.sourceTier) * 5;
       const scoreB = b.finalContribution * 0.7 + b.relevanceScore * 30 + (6 - b.sourceTier) * 5;
       return scoreB - scoreA;
     });
 
-    // Return top 3 highest-quality ranked evidence records
     return evidenceList.slice(0, 3);
   }
 
   /**
-   * Searches live news articles via Google News RSS
+   * Searches live news articles via Google News RSS with 3.5s timeout
    */
   private async searchGoogleNewsRss(query: string, maxResults = 4): Promise<RawCandidate[]> {
     const encoded = encodeURIComponent(query);
     const url = `https://news.google.com/rss/search?q=${encoded}&hl=en-IN&gl=IN&ceid=IN:en`;
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 6000);
+    const timeout = setTimeout(() => controller.abort(), 3500);
 
     try {
       const response = await fetch(url, {
@@ -312,7 +307,6 @@ export class EvidenceRetrieverService {
         const publisher = sourceElem.text().trim() || 'Verified News Agency';
         const sourceUrl = sourceElem.attr('url') || link;
 
-        // Clean title if publisher is repeated at end ("Headline - Publisher")
         const cleanTitle = title.includes(' - ') ? title.split(' - ').slice(0, -1).join(' - ') : title;
 
         if (cleanTitle && link) {
@@ -338,10 +332,9 @@ export class EvidenceRetrieverService {
    * Constructs an effective search query from the claim text
    */
   private constructSearchQuery(claimText: string, isTimeSensitive = false): string {
-    let cleaned = claimText.replace(/[“”"']/g, ' ').replace(/\s+/g, ' ').trim();
+    let cleaned = claimText.replace(/[“”"'.,;!?()]/g, ' ').replace(/\s+/g, ' ').trim();
     cleaned = cleaned.replace(/^(According to|Researchers found that|Studies show that|A report shows that)\s+/i, '');
 
-    // For political ruling party queries, normalize "ruler party" to "ruling party government"
     if (/ruler party/i.test(cleaned)) {
       cleaned = cleaned.replace(/ruler party/i, 'ruling party');
     }
@@ -350,22 +343,27 @@ export class EvidenceRetrieverService {
       cleaned = `${cleaned} Union government`;
     }
 
-    const words = cleaned.split(' ').filter(Boolean);
-    if (words.length > 9) {
-      return words.slice(0, 9).join(' ');
+    // Strip common filler / stop words from search queries so search engines match core entities & predicates
+    const stopWords = new Set(['is', 'are', 'was', 'were', 'located', 'situated', 'in', 'the', 'a', 'an', 'of', 'and', 'that', 'with', 'from', 'at']);
+    const words = cleaned.split(' ').filter((w) => w.length > 0);
+    const filteredWords = words.filter((w) => !stopWords.has(w.toLowerCase()) || w.length > 6);
+
+    const queryWords = filteredWords.length >= 2 ? filteredWords : words;
+    if (queryWords.length > 8) {
+      return queryWords.slice(0, 8).join(' ');
     }
-    return cleaned;
+    return queryWords.join(' ');
   }
 
   /**
-   * Queries Wikipedia Search & Summary REST API
+   * Queries Wikipedia Search & Summary REST API with 3.5s timeout
    */
   private async searchWikipedia(query: string): Promise<RawCandidate[]> {
     const encoded = encodeURIComponent(query);
     const url = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encoded}&format=json&utf8=1&srlimit=2`;
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 6000);
+    const timeout = setTimeout(() => controller.abort(), 3500);
 
     try {
       const response = await fetch(url, {
@@ -408,14 +406,14 @@ export class EvidenceRetrieverService {
   }
 
   /**
-   * Queries Web search via DuckDuckGo HTML endpoint
+   * Queries Web search via DuckDuckGo HTML endpoint with 3.5s timeout
    */
   private async searchWeb(query: string, maxResults = 3): Promise<RawCandidate[]> {
     const encoded = encodeURIComponent(query);
     const searchUrl = `https://html.duckduckgo.com/html/?q=${encoded}`;
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 7000);
+    const timeout = setTimeout(() => controller.abort(), 3500);
 
     try {
       const response = await fetch(searchUrl, {
@@ -446,7 +444,6 @@ export class EvidenceRetrieverService {
         let snippet = snippetElem.text().trim();
         let rawHref = titleElem.attr('href') || '';
 
-        // Extract direct destination URL from DuckDuckGo redirect wrapper (/l/?uddg=...)
         let targetUrl = '';
         if (rawHref.includes('uddg=')) {
           const match = rawHref.match(/uddg=([^&]+)/);

@@ -70,7 +70,7 @@ export class ExtractorService {
 
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 12000);
+      const timeoutId = setTimeout(() => controller.abort(), 7000);
 
       const response = await fetch(validUrl.toString(), {
         signal: controller.signal,

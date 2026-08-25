@@ -13,15 +13,17 @@ export const analyzeArticle = async (
   res: Response,
   next: NextFunction
 ): Promise<void> => {
+  const reqStart = Date.now();
+  const timings: Record<string, number> = {};
+
   try {
     const { url, text } = req.body;
 
     let articleResult: AnalyzeResponseData['article'];
 
+    const tExtStart = Date.now();
     if (url && url.trim().length > 0) {
-      // Perform extraction from the target URL
       const extracted = await extractorService.extract(url.trim());
-
       articleResult = {
         title: extracted.title,
         author: extracted.author,
@@ -31,7 +33,6 @@ export const analyzeArticle = async (
         text: extracted.text,
       };
     } else if (text && text.trim().length > 0) {
-      // Manual text submission handling
       const trimmedText = text.trim();
       const firstLine = trimmedText.split('\n')[0].trim();
       const title =
@@ -55,8 +56,11 @@ export const analyzeArticle = async (
       });
       return;
     }
+    timings.extractionMs = Date.now() - tExtStart;
+    console.log(`[TIMING] Article extraction took ${timings.extractionMs}ms`);
 
-    // 1. Extract factual claims from the article text
+    // 1. Extract factual claims
+    const tClaimStart = Date.now();
     const { claims: rawClaims } = claimExtractorService.extractClaims(articleResult.text);
 
     // 2. Extract entities for each claim
@@ -64,11 +68,17 @@ export const analyzeArticle = async (
       ...c,
       entities: entityExtractorService.extractEntities(c.text),
     }));
+    timings.claimExtractionMs = Date.now() - tClaimStart;
+    console.log(`[TIMING] Claim extraction took ${timings.claimExtractionMs}ms (extracted ${claims.length} claims)`);
 
-    // 3. Retrieve multi-source evidence for the extracted claims
+    // 3. Multi-source concurrent evidence retrieval
+    const tEvStart = Date.now();
     const evidence = await evidenceRetrieverService.retrieveEvidence(claims);
+    timings.evidenceRetrievalMs = Date.now() - tEvStart;
+    console.log(`[TIMING] Evidence retrieval took ${timings.evidenceRetrievalMs}ms (retrieved ${evidence.length} items)`);
 
-    // 4. Perform evidence-grounded AI reasoning for each claim
+    // 4. Evidence-grounded AI reasoning per claim
+    const tReasonStart = Date.now();
     const evaluatedClaims: ExtractedClaim[] = await Promise.all(
       claims.map(async (claim) => {
         const claimEvidence = evidence.filter((e) => e.claimId === claim.id);
@@ -83,13 +93,17 @@ export const analyzeArticle = async (
         };
       })
     );
+    timings.aiReasoningMs = Date.now() - tReasonStart;
+    console.log(`[TIMING] AI reasoning took ${timings.aiReasoningMs}ms`);
 
-    // 5. Calculate transparent credibility score
+    // 5. Calculate calibrated 5-pillar credibility score
+    const tScoreStart = Date.now();
     const scoringResult = credibilityScorerService.computeCredibilityScore(
       articleResult,
       evaluatedClaims,
       evidence
     );
+    timings.scoringMs = Date.now() - tScoreStart;
 
     // Deduplicate and enrich sources list
     const sourceMap = new Map<string, any>();
@@ -107,6 +121,9 @@ export const analyzeArticle = async (
       }
     }
 
+    timings.totalMs = Date.now() - reqStart;
+    console.log(`[TIMING] Total analysis completed in ${timings.totalMs}ms`);
+
     const responseData: AnalyzeResponseData = {
       article: articleResult,
       claims: evaluatedClaims,
@@ -119,6 +136,8 @@ export const analyzeArticle = async (
       limitations: scoringResult.limitations,
       reasons: [scoringResult.summary, ...scoringResult.limitations],
       sources: Array.from(sourceMap.values()),
+      diagnostics: scoringResult.diagnostics,
+      timings,
     };
 
     res.status(200).json(responseData);

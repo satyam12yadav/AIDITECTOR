@@ -97,6 +97,18 @@ export interface SourceSummary {
   badge?: string;
 }
 
+export interface ScoreDiagnosticItem {
+  claim: string;
+  evidence: string;
+  source: string;
+  sourceTier: number;
+  relation: EvidenceRelation;
+  relevance: EvidenceRelevance;
+  evidenceConfidence: number;
+  sourceReliability: number;
+  contributionToFinalScore: number;
+}
+
 export interface AnalyzeResponseData {
   article: ArticleMetadata;
   claims: ExtractedClaim[];
@@ -109,6 +121,8 @@ export interface AnalyzeResponseData {
   limitations: string[];
   reasons: string[];
   sources: SourceSummary[];
+  diagnostics?: ScoreDiagnosticItem[];
+  timings?: Record<string, number>;
 }
 
 export interface ApiResponse<T = any> {

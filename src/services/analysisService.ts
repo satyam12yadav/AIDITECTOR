@@ -52,7 +52,7 @@ export const analysisService = {
   async analyzeArticle(
     payload: AnalyzePayload,
     signal?: AbortSignal,
-    timeoutMs = 15000
+    timeoutMs = 35000
   ): Promise<BackendAnalyzeResponse> {
     return apiFetch<BackendAnalyzeResponse>('/api/analyze', {
       method: 'POST',
