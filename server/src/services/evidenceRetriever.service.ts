@@ -1,6 +1,7 @@
 import * as cheerio from 'cheerio';
 import { decode } from 'html-entities';
 import { ExtractedClaim, RetrievedEvidenceItem, SourceType, EvidenceRelation } from '../types/api.js';
+import { sourceRegistry } from './sourceRegistry.service.js';
 
 interface RawSearchCandidate {
   title: string;
@@ -321,6 +322,14 @@ export class EvidenceRetrieverService {
    * Classifies the source domain into institutional categories
    */
   private classifySourceType(urlStr: string, publisher: string): SourceType {
+    // 1. Check verified source database from Book1.xlsx
+    const registryMatch = sourceRegistry.matchSource(urlStr) || sourceRegistry.matchSource(publisher);
+    if (registryMatch) {
+      if (registryMatch.isFactChecker) return 'fact_check';
+      if (registryMatch.isWireService) return 'official';
+      return 'news';
+    }
+
     try {
       const url = new URL(urlStr);
       const host = url.hostname.toLowerCase();
@@ -342,10 +351,10 @@ export class EvidenceRetrieverService {
     }
 
     const pubLower = publisher.toLowerCase();
-    if (pubLower.includes('fact check') || pubLower.includes('politifact') || pubLower.includes('snopes')) {
+    if (pubLower.includes('fact check') || pubLower.includes('politifact') || pubLower.includes('snopes') || pubLower.includes('boom')) {
       return 'fact_check';
     }
-    if (pubLower.includes('reuters') || pubLower.includes('ap news') || pubLower.includes('bbc')) {
+    if (pubLower.includes('reuters') || pubLower.includes('ap news') || pubLower.includes('bbc') || pubLower.includes('pti') || pubLower.includes('hindu')) {
       return 'news';
     }
 

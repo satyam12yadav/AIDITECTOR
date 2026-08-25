@@ -5,6 +5,7 @@ import {
   ScoreBreakdown,
   CredibilityVerdict,
 } from '../types/api.js';
+import { sourceRegistry } from './sourceRegistry.service.js';
 
 export interface CredibilityScoreResult {
   score: number;
@@ -99,29 +100,34 @@ export class CredibilityScorerService {
       const matchingEv = evidence.filter((e) => e.claimId === claim.id);
 
       if (matchingEv.length === 0) {
-        // Unverified claim: neutral 50 (absence of evidence is not falsity)
+        // No evidence: neutral baseline 50 (absence of evidence is not falsity)
         weightedSum += 50 * weight;
-      } else {
-        const hasContradict = matchingEv.some((e) => e.relation === 'contradicts');
-        const hasSupport = matchingEv.some((e) => e.relation === 'supports');
+        continue;
+      }
 
-        if (hasContradict) {
-          // Contradicted claim gets 0
-          weightedSum += 0 * weight;
-          if (weight >= 0.8) {
-            hasHighImportanceContradiction = true;
-          }
-        } else if (hasSupport) {
-          // Unique supporting sources bonus
-          const uniqueSupporters = new Set(
-            matchingEv.filter((e) => e.relation === 'supports').map((e) => e.publisher)
-          ).size;
-          const score = uniqueSupporters >= 2 ? 100 : 90;
-          weightedSum += score * weight;
-        } else {
-          // Only unclear / contextual evidence
-          weightedSum += 60 * weight;
+      const hasContradiction = matchingEv.some((e) => e.relation === 'contradicts');
+      const hasSupport = matchingEv.some((e) => e.relation === 'supports');
+
+      if (hasContradiction) {
+        if (weight >= 0.7) {
+          hasHighImportanceContradiction = true;
         }
+        weightedSum += 0 * weight; // Contradiction: 0 score
+      } else if (hasSupport) {
+        // Supported: evaluate high-trust vs standard sources
+        const bestSource = matchingEv.reduce((acc, curr) => {
+          const registryCheck = sourceRegistry.matchSource(curr.publisher || curr.url);
+          const score = registryCheck
+            ? registryCheck.trustWeight * 100
+            : curr.sourceType === 'official' || curr.sourceType === 'academic' || curr.sourceType === 'fact_check'
+            ? 95
+            : 85;
+          return Math.max(acc, score);
+        }, 80);
+        weightedSum += bestSource * weight;
+      } else {
+        // Unclear: neutral 55
+        weightedSum += 55 * weight;
       }
     }
 
@@ -137,7 +143,7 @@ export class CredibilityScorerService {
 
   /**
    * Component 2: Source Reliability (25% weight)
-   * Evaluates unique institutional publishers (official, academic, fact_check, news, other).
+   * Evaluates unique institutional publishers matched against the 54 verified sources registry.
    */
   public calculateSourceReliability(
     article: ArticleMetadata,
@@ -150,6 +156,13 @@ export class CredibilityScorerService {
     for (const item of evidence) {
       const pub = (item.publisher || item.url).toLowerCase();
       if (!publisherScores.has(pub)) {
+        // 1. Check verified database
+        const match = sourceRegistry.matchSource(pub) || sourceRegistry.matchSource(item.url);
+        if (match) {
+          publisherScores.set(pub, Math.round(match.trustWeight * 100));
+          continue;
+        }
+
         let score = 50;
         switch (item.sourceType) {
           case 'official':
@@ -159,7 +172,7 @@ export class CredibilityScorerService {
             score = 92;
             break;
           case 'fact_check':
-            score = 90;
+            score = 92;
             break;
           case 'news':
             score = 82;
@@ -175,8 +188,12 @@ export class CredibilityScorerService {
 
     if (publisherScores.size === 0) {
       limitations.push('No independent external sources were retrieved to establish empirical source reliability.');
-      // Fallback to evaluating the ingested article's source if identifiable
+      // Check if the ingested article itself is from our verified database
       if (article.publisher && article.publisher !== 'Direct Text Ingestion') {
+        const match = sourceRegistry.matchSource(article.publisher) || (article.url ? sourceRegistry.matchSource(article.url) : null);
+        if (match) {
+          return Math.round(match.trustWeight * 100);
+        }
         const pubLower = article.publisher.toLowerCase();
         if (pubLower.includes('.gov') || pubLower.includes('who.int')) return 90;
         if (pubLower.includes('.edu')) return 88;
@@ -365,7 +382,7 @@ export class CredibilityScorerService {
    */
   public getVerdict(score: number): CredibilityVerdict {
     if (score >= 90) return 'Highly Credible';
-    if (score >= 75) return 'Probably Credible';
+    if (score >= 80) return 'Probably Credible';
     if (score >= 50) return 'Needs Verification';
     if (score >= 25) return 'Likely Misleading';
     return 'Highly Suspicious';

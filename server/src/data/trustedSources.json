@@ -1,0 +1,488 @@
+[
+  {
+    "name": "FactChecker.in",
+    "url": "https://www.factchecker.in/",
+    "domain": "factchecker.in",
+    "category": "IFCN-Certified & Dedicated Fact-Checking Platforms",
+    "isFactChecker": true,
+    "isWireService": false,
+    "trustWeight": 0.95
+  },
+  {
+    "name": "BOOM Live",
+    "url": "https://www.boomlive.in/",
+    "domain": "boomlive.in",
+    "category": "IFCN-Certified & Dedicated Fact-Checking Platforms",
+    "isFactChecker": true,
+    "isWireService": false,
+    "trustWeight": 0.95
+  },
+  {
+    "name": "Alt News",
+    "url": "https://www.altnews.in/",
+    "domain": "altnews.in",
+    "category": "IFCN-Certified & Dedicated Fact-Checking Platforms",
+    "isFactChecker": true,
+    "isWireService": false,
+    "trustWeight": 0.95
+  },
+  {
+    "name": "Vishvas News",
+    "url": "https://www.vishvasnews.com/",
+    "domain": "vishvasnews.com",
+    "category": "IFCN-Certified & Dedicated Fact-Checking Platforms",
+    "isFactChecker": true,
+    "isWireService": false,
+    "trustWeight": 0.95
+  },
+  {
+    "name": "WebQoof (by The Quint)",
+    "url": "https://www.thequint.com/news/webqoof",
+    "domain": "thequint.com",
+    "category": "IFCN-Certified & Dedicated Fact-Checking Platforms",
+    "isFactChecker": true,
+    "isWireService": false,
+    "trustWeight": 0.95
+  },
+  {
+    "name": "Factly",
+    "url": "https://factly.in/",
+    "domain": "factly.in",
+    "category": "IFCN-Certified & Dedicated Fact-Checking Platforms",
+    "isFactChecker": true,
+    "isWireService": false,
+    "trustWeight": 0.95
+  },
+  {
+    "name": "First Check",
+    "url": "https://www.firstcheck.in/",
+    "domain": "firstcheck.in",
+    "category": "IFCN-Certified & Dedicated Fact-Checking Platforms",
+    "isFactChecker": true,
+    "isWireService": false,
+    "trustWeight": 0.95
+  },
+  {
+    "name": "India Today Fact Check",
+    "url": "https://www.indiatoday.in/fact-check",
+    "domain": "indiatoday.in",
+    "category": "IFCN-Certified & Dedicated Fact-Checking Platforms",
+    "isFactChecker": true,
+    "isWireService": false,
+    "trustWeight": 0.95
+  },
+  {
+    "name": "DFRAC",
+    "url": "https://dfrac.org/",
+    "domain": "dfrac.org",
+    "category": "IFCN-Certified & Dedicated Fact-Checking Platforms",
+    "isFactChecker": true,
+    "isWireService": false,
+    "trustWeight": 0.95
+  },
+  {
+    "name": "Press Trust of India (PTI)",
+    "url": "https://www.ptinews.com/",
+    "domain": "ptinews.com",
+    "category": "Primary Wire Services",
+    "isFactChecker": false,
+    "isWireService": true,
+    "trustWeight": 0.95
+  },
+  {
+    "name": "Asian News International (ANI)",
+    "url": "https://www.aninews.in/",
+    "domain": "aninews.in",
+    "category": "Primary Wire Services",
+    "isFactChecker": false,
+    "isWireService": true,
+    "trustWeight": 0.95
+  },
+  {
+    "name": "The Hindu",
+    "url": "https://www.thehindu.com/",
+    "domain": "thehindu.com",
+    "category": "National Broadsheets & Legacy Media",
+    "isFactChecker": false,
+    "isWireService": false,
+    "trustWeight": 0.9
+  },
+  {
+    "name": "The Indian Express",
+    "url": "https://indianexpress.com/",
+    "domain": "indianexpress.com",
+    "category": "National Broadsheets & Legacy Media",
+    "isFactChecker": false,
+    "isWireService": false,
+    "trustWeight": 0.9
+  },
+  {
+    "name": "Hindustan Times",
+    "url": "https://www.hindustantimes.com/",
+    "domain": "hindustantimes.com",
+    "category": "National Broadsheets & Legacy Media",
+    "isFactChecker": false,
+    "isWireService": false,
+    "trustWeight": 0.9
+  },
+  {
+    "name": "The Times of India",
+    "url": "https://timesofindia.indiatimes.com/",
+    "domain": "timesofindia.indiatimes.com",
+    "category": "National Broadsheets & Legacy Media",
+    "isFactChecker": false,
+    "isWireService": false,
+    "trustWeight": 0.9
+  },
+  {
+    "name": "NDTV",
+    "url": "https://www.ndtv.com/",
+    "domain": "ndtv.com",
+    "category": "National Broadsheets & Legacy Media",
+    "isFactChecker": false,
+    "isWireService": false,
+    "trustWeight": 0.9
+  },
+  {
+    "name": "Outlook India",
+    "url": "https://www.outlookindia.com/",
+    "domain": "outlookindia.com",
+    "category": "National Broadsheets & Legacy Media",
+    "isFactChecker": false,
+    "isWireService": false,
+    "trustWeight": 0.9
+  },
+  {
+    "name": "Aaj Tak",
+    "url": "https://www.aajtak.in/",
+    "domain": "aajtak.in",
+    "category": "National Broadsheets & Legacy Media",
+    "isFactChecker": false,
+    "isWireService": false,
+    "trustWeight": 0.9
+  },
+  {
+    "name": "Scroll.in",
+    "url": "https://scroll.in/",
+    "domain": "scroll.in",
+    "category": "Independent & Digital-First Media",
+    "isFactChecker": false,
+    "isWireService": false,
+    "trustWeight": 0.85
+  },
+  {
+    "name": "The Wire",
+    "url": "https://thewire.in/",
+    "domain": "thewire.in",
+    "category": "Independent & Digital-First Media",
+    "isFactChecker": false,
+    "isWireService": false,
+    "trustWeight": 0.85
+  },
+  {
+    "name": "The News Minute",
+    "url": "https://www.thenewsminute.com/",
+    "domain": "thenewsminute.com",
+    "category": "Independent & Digital-First Media",
+    "isFactChecker": false,
+    "isWireService": false,
+    "trustWeight": 0.85
+  },
+  {
+    "name": "Newslaundry",
+    "url": "https://www.newslaundry.com/",
+    "domain": "newslaundry.com",
+    "category": "Independent & Digital-First Media",
+    "isFactChecker": false,
+    "isWireService": false,
+    "trustWeight": 0.85
+  },
+  {
+    "name": "LiveMint",
+    "url": "https://www.livemint.com/",
+    "domain": "livemint.com",
+    "category": "Financial & Business News",
+    "isFactChecker": false,
+    "isWireService": false,
+    "trustWeight": 0.9
+  },
+  {
+    "name": "Business Standard",
+    "url": "https://www.business-standard.com/",
+    "domain": "business-standard.com",
+    "category": "Financial & Business News",
+    "isFactChecker": false,
+    "isWireService": false,
+    "trustWeight": 0.9
+  },
+  {
+    "name": "The Economic Times",
+    "url": "https://economictimes.indiatimes.com/",
+    "domain": "economictimes.indiatimes.com",
+    "category": "Financial & Business News",
+    "isFactChecker": false,
+    "isWireService": false,
+    "trustWeight": 0.9
+  },
+  {
+    "name": "BQ Prime",
+    "url": "https://www.bqprime.com/",
+    "domain": "bqprime.com",
+    "category": "Financial & Business News",
+    "isFactChecker": false,
+    "isWireService": false,
+    "trustWeight": 0.9
+  },
+  {
+    "name": "PIB Fact Check",
+    "url": "https://factcheck.pib.gov.in/",
+    "domain": "factcheck.pib.gov.in",
+    "category": "IFCN-Certified & Dedicated Fact-Checking Platforms",
+    "isFactChecker": true,
+    "isWireService": false,
+    "trustWeight": 0.95
+  },
+  {
+    "name": "Newschecker",
+    "url": "https://newschecker.in/",
+    "domain": "newschecker.in",
+    "category": "IFCN-Certified & Dedicated Fact-Checking Platforms",
+    "isFactChecker": true,
+    "isWireService": false,
+    "trustWeight": 0.95
+  },
+  {
+    "name": "Fact Crescendo",
+    "url": "https://www.factcrescendo.com/",
+    "domain": "factcrescendo.com",
+    "category": "IFCN-Certified & Dedicated Fact-Checking Platforms",
+    "isFactChecker": true,
+    "isWireService": false,
+    "trustWeight": 0.95
+  },
+  {
+    "name": "NewsMobile Fact Check",
+    "url": "https://newsmobile.in/fact-check/",
+    "domain": "newsmobile.in",
+    "category": "IFCN-Certified & Dedicated Fact-Checking Platforms",
+    "isFactChecker": true,
+    "isWireService": false,
+    "trustWeight": 0.95
+  },
+  {
+    "name": "THIP Media (The Health Information Platform)",
+    "url": "https://www.thip.media/",
+    "domain": "thip.media",
+    "category": "IFCN-Certified & Dedicated Fact-Checking Platforms",
+    "isFactChecker": true,
+    "isWireService": false,
+    "trustWeight": 0.95
+  },
+  {
+    "name": "YouTurn",
+    "url": "https://youturn.in/",
+    "domain": "youturn.in",
+    "category": "IFCN-Certified & Dedicated Fact-Checking Platforms",
+    "isFactChecker": true,
+    "isWireService": false,
+    "trustWeight": 0.95
+  },
+  {
+    "name": "SM Hoax Slayer",
+    "url": "https://smhoaxslayer.com/",
+    "domain": "smhoaxslayer.com",
+    "category": "IFCN-Certified & Dedicated Fact-Checking Platforms",
+    "isFactChecker": true,
+    "isWireService": false,
+    "trustWeight": 0.95
+  },
+  {
+    "name": "Deccan Herald",
+    "url": "https://www.deccanherald.com/",
+    "domain": "deccanherald.com",
+    "category": "Respected Legacy Broadsheets & Regional Giants",
+    "isFactChecker": false,
+    "isWireService": false,
+    "trustWeight": 0.85
+  },
+  {
+    "name": "The Tribune",
+    "url": "https://www.tribuneindia.com/",
+    "domain": "tribuneindia.com",
+    "category": "Respected Legacy Broadsheets & Regional Giants",
+    "isFactChecker": false,
+    "isWireService": false,
+    "trustWeight": 0.85
+  },
+  {
+    "name": "The Telegraph",
+    "url": "https://www.telegraphindia.com/",
+    "domain": "telegraphindia.com",
+    "category": "Respected Legacy Broadsheets & Regional Giants",
+    "isFactChecker": false,
+    "isWireService": false,
+    "trustWeight": 0.85
+  },
+  {
+    "name": "Deccan Chronicle",
+    "url": "https://www.deccanchronicle.com/",
+    "domain": "deccanchronicle.com",
+    "category": "Respected Legacy Broadsheets & Regional Giants",
+    "isFactChecker": false,
+    "isWireService": false,
+    "trustWeight": 0.85
+  },
+  {
+    "name": "The Pioneer",
+    "url": "https://www.dailypioneer.com/",
+    "domain": "dailypioneer.com",
+    "category": "Respected Legacy Broadsheets & Regional Giants",
+    "isFactChecker": false,
+    "isWireService": false,
+    "trustWeight": 0.85
+  },
+  {
+    "name": "The Free Press Journal",
+    "url": "https://www.freepressjournal.in/",
+    "domain": "freepressjournal.in",
+    "category": "Respected Legacy Broadsheets & Regional Giants",
+    "isFactChecker": false,
+    "isWireService": false,
+    "trustWeight": 0.85
+  },
+  {
+    "name": "Anandabazar Patrika",
+    "url": "https://www.anandabazar.com/",
+    "domain": "anandabazar.com",
+    "category": "Respected Legacy Broadsheets & Regional Giants",
+    "isFactChecker": false,
+    "isWireService": false,
+    "trustWeight": 0.85
+  },
+  {
+    "name": "Dainik Bhaskar",
+    "url": "https://www.bhaskar.com/",
+    "domain": "bhaskar.com",
+    "category": "Respected Legacy Broadsheets & Regional Giants",
+    "isFactChecker": false,
+    "isWireService": false,
+    "trustWeight": 0.85
+  },
+  {
+    "name": "Dainik Jagran",
+    "url": "https://www.jagran.com/",
+    "domain": "jagran.com",
+    "category": "Respected Legacy Broadsheets & Regional Giants",
+    "isFactChecker": false,
+    "isWireService": false,
+    "trustWeight": 0.85
+  },
+  {
+    "name": "Malayala Manorama",
+    "url": "https://www.manoramaonline.com/",
+    "domain": "manoramaonline.com",
+    "category": "Respected Legacy Broadsheets & Regional Giants",
+    "isFactChecker": false,
+    "isWireService": false,
+    "trustWeight": 0.85
+  },
+  {
+    "name": "Eenadu",
+    "url": "https://www.eenadu.net/",
+    "domain": "eenadu.net",
+    "category": "Respected Legacy Broadsheets & Regional Giants",
+    "isFactChecker": false,
+    "isWireService": false,
+    "trustWeight": 0.85
+  },
+  {
+    "name": "Financial Express",
+    "url": "https://www.financialexpress.com/",
+    "domain": "financialexpress.com",
+    "category": "Financial, Markets & Data-Driven Journalism",
+    "isFactChecker": false,
+    "isWireService": false,
+    "trustWeight": 0.9
+  },
+  {
+    "name": "Moneycontrol",
+    "url": "https://www.moneycontrol.com/",
+    "domain": "moneycontrol.com",
+    "category": "Financial, Markets & Data-Driven Journalism",
+    "isFactChecker": false,
+    "isWireService": false,
+    "trustWeight": 0.9
+  },
+  {
+    "name": "The Hindu BusinessLine",
+    "url": "https://www.thehindubusinessline.com/",
+    "domain": "thehindubusinessline.com",
+    "category": "Financial, Markets & Data-Driven Journalism",
+    "isFactChecker": false,
+    "isWireService": false,
+    "trustWeight": 0.9
+  },
+  {
+    "name": "IndiaSpend",
+    "url": "https://www.indiaspend.com/",
+    "domain": "indiaspend.com",
+    "category": "Financial, Markets & Data-Driven Journalism",
+    "isFactChecker": false,
+    "isWireService": false,
+    "trustWeight": 0.9
+  },
+  {
+    "name": "The Caravan Magazine",
+    "url": "https://caravanmagazine.in/",
+    "domain": "caravanmagazine.in",
+    "category": "Analytical Magazines & Long-Form Investigation",
+    "isFactChecker": false,
+    "isWireService": false,
+    "trustWeight": 0.85
+  },
+  {
+    "name": "Frontline Magazine",
+    "url": "https://frontline.thehindu.com/",
+    "domain": "frontline.thehindu.com",
+    "category": "Analytical Magazines & Long-Form Investigation",
+    "isFactChecker": false,
+    "isWireService": false,
+    "trustWeight": 0.85
+  },
+  {
+    "name": "Economic and Political Weekly",
+    "url": "https://www.epw.in/",
+    "domain": "epw.in",
+    "category": "Analytical Magazines & Long-Form Investigation",
+    "isFactChecker": false,
+    "isWireService": false,
+    "trustWeight": 0.85
+  },
+  {
+    "name": "Reuters",
+    "url": "https://www.reuters.com/",
+    "domain": "reuters.com",
+    "category": "Verified Media",
+    "isFactChecker": false,
+    "isWireService": true,
+    "trustWeight": 0.95
+  },
+  {
+    "name": "AP NEWS",
+    "url": "https://apnews.com/",
+    "domain": "apnews.com",
+    "category": "Verified Media",
+    "isFactChecker": false,
+    "isWireService": true,
+    "trustWeight": 0.95
+  },
+  {
+    "name": "BCC News",
+    "url": "https://apnews.com/",
+    "domain": "apnews.com",
+    "category": "Verified Media",
+    "isFactChecker": false,
+    "isWireService": false,
+    "trustWeight": 0.85
+  }
+]

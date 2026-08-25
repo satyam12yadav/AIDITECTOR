@@ -70,13 +70,13 @@ export const transformBackendResponseToUi = (
         const reliabilityTier = isOfficialOrAcademic || isFactCheck ? ('high' as const) : ('medium' as const);
         const reliabilityBadge =
           sourceType === 'official'
-            ? 'Official Source'
+            ? 'Primary Wire / Official'
             : sourceType === 'academic'
             ? 'Academic / Peer-Reviewed'
             : sourceType === 'fact_check'
-            ? 'Fact-Check Registry'
+            ? 'IFCN-Certified Fact-Checker'
             : sourceType === 'news'
-            ? 'Independent Wire'
+            ? 'Verified News Media'
             : 'Web Source';
 
         return {
