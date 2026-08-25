@@ -119,31 +119,26 @@ export const analyzeArticle = async (
 
     timings.totalMs = Date.now() - reqStart;
 
-    // Structured Console Diagnostics (Requirement 9 & 11)
+    // Structured Console Diagnostics (Requirement 9)
     for (const claim of evaluatedClaims) {
       const claimEvidence = evidence.filter((e) => e.claimId === claim.id);
-      const sourcesFound = claimEvidence.map((e) => e.sourceName || e.publisher);
-      const registryMatches = claimEvidence
-        .filter((e) => sourceRegistry.matchSource(e.sourceName || e.publisher)?.name)
-        .map((e) => e.sourceName);
+      const generatedQueries = evidenceRetrieverService.generateSearchQueries(claim.text, claim.isTimeSensitive);
+      const sourcesFound = claimEvidence.map((e) => `${e.sourceName || e.publisher} (${e.sourceType || 'reference'})`);
+      const acceptedEvidence = claimEvidence
+        .filter((e) => e.relationToClaim === 'SUPPORTS' && e.relevance === 'direct')
+        .map((e) => `"${e.evidenceText?.slice(0, 100)}..." [${e.sourceName}]`);
 
       const geminiVerdict = claim.evaluation?.verdict || 'UNVERIFIED';
-      const stanceScore = geminiVerdict === 'TRUE' ? 1 : geminiVerdict === 'FALSE' ? -1 : 0;
 
       console.log(`\n============================================================`);
-      console.log(`CLAIM: "${claim.text}"`);
-      console.log(`SOURCES REQUESTED: [Google FactCheck, Google News RSS, Knowledge Archives, Web Search]`);
-      console.log(`SOURCES FOUND: [${sourcesFound.join(', ') || 'No external sources retrieved'}]`);
-      console.log(`SOURCE REGISTRY MATCHES: [${registryMatches.join(', ') || 'None'}]`);
-      console.log(`SOURCE RELIABILITY: ${scoringResult.breakdown.sourceReliability}/100`);
-      console.log(`GEMINI STANCE: ${geminiVerdict} (Confidence: ${claim.evaluation?.confidence || 0}%)`);
-      console.log(`STANCE SCORE: ${stanceScore > 0 ? '+1' : stanceScore < 0 ? '-1' : '0'}`);
-      console.log(`CROSS-SOURCE AGREEMENT: ${scoringResult.breakdown.crossSourceAgreement}%`);
-      console.log(`FINAL SCORE: ${scoringResult.score}/100`);
-      console.log(`FINAL VERDICT: ${scoringResult.verdict}`);
-      if (claimEvidence.length === 0) {
-        console.log(`DIAGNOSTIC STATUS: Search returned no results / Insufficient empirical records`);
-      }
+      console.log(`Claim:\n${claim.text}`);
+      console.log(`\nGenerated queries:\n${JSON.stringify(generatedQueries, null, 2)}`);
+      console.log(`\nSources searched:\n[Google FactCheck, Google News RSS, Reference Repositories (Britannica/NatGeo/ThoughtCo/Wikipedia), Web Search]`);
+      console.log(`\nSources found:\n[${sourcesFound.join(', ') || 'No external sources retrieved'}]`);
+      console.log(`\nAccepted evidence:\n[${acceptedEvidence.join(',\n') || 'None'}]`);
+      console.log(`\nGemini stance:\n${geminiVerdict.toLowerCase()} (Confidence: ${claim.evaluation?.confidence || 0}%)`);
+      console.log(`\nFinal score:\n${scoringResult.score}/100`);
+      console.log(`\nFinal verdict:\n${scoringResult.verdict}`);
       console.log(`============================================================\n`);
     }
 

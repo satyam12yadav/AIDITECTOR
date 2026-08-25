@@ -42,7 +42,7 @@ export interface ExtractedClaim {
   evaluation?: ClaimForensicEvaluation;
 }
 
-export type SourceType = 'official' | 'news' | 'fact_check' | 'academic' | 'other';
+export type SourceType = 'official' | 'news' | 'fact_check' | 'reference' | 'encyclopedia' | 'academic' | 'other';
 
 export type RelationToClaim = 'SUPPORTS' | 'CONTRADICTS' | 'NEUTRAL' | 'INSUFFICIENT';
 export type EvidenceRelation = 'supports' | 'contradicts' | 'unclear';

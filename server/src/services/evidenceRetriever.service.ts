@@ -19,6 +19,7 @@ interface RawCandidate {
   snippet: string;
   publishedDate: string | null;
   priorityTier: 1 | 2 | 3 | 4 | 5;
+  sourceType?: SourceType;
 }
 
 const INSTITUTIONAL_TRIGGERS = [
@@ -66,17 +67,59 @@ export class EvidenceRetrieverService {
   }
 
   /**
+   * Generates 2-3 clean, semantic search queries from claim text
+   */
+  public generateSearchQueries(claimText: string, isTimeSensitive = false): string[] {
+    const cleaned = claimText.replace(/[“”"'.,;!?()]/g, ' ').replace(/\s+/g, ' ').trim();
+    const queries = new Set<string>();
+
+    // 1. Primary Clean Query (Filtered stop words)
+    const stopWords = new Set(['is', 'are', 'was', 'were', 'the', 'a', 'an', 'of', 'and', 'that', 'with', 'from', 'at', 'in', 'on', 'to']);
+    const words = cleaned.split(' ').filter(Boolean);
+    const coreWords = words.filter((w) => !stopWords.has(w.toLowerCase()) || w.length > 5);
+
+    if (coreWords.length >= 2) {
+      queries.add(coreWords.join(' '));
+    }
+
+    // 2. Semantic query expansion for superlatives & comparisons
+    if (/\b(largest|biggest|smallest|highest|tallest|deepest|longest|fastest|coldest|hottest|most populous)\b/i.test(cleaned)) {
+      const superlativeMatch = cleaned.match(/\b(largest|biggest|smallest|highest|tallest|deepest|longest|fastest|coldest|hottest|most populous)\s+(\w+)/i);
+      const subject = words[0];
+      if (superlativeMatch && subject) {
+        queries.add(`${subject} ${superlativeMatch[0]}`);
+        queries.add(`${subject} ${superlativeMatch[0]} by area`);
+        queries.add(`${subject} ${superlativeMatch[0]} in the world`);
+      }
+    }
+
+    // 3. Location & Geographical queries
+    if (/\b(located in|situated in|country in|capital of|continent of|island in|ocean|river)\b/i.test(cleaned)) {
+      queries.add(cleaned.replace(/\b(is|are|was|were)\b/gi, '').replace(/\s+/g, ' ').trim());
+    }
+
+    // 4. Time-sensitive Political queries
+    if (/ruler party/i.test(cleaned)) {
+      const fixed = cleaned.replace(/ruler party/i, 'ruling party');
+      queries.add(`${fixed} Union government`);
+    }
+
+    if (queries.size === 0) {
+      queries.add(cleaned);
+    }
+
+    return Array.from(queries).slice(0, 3);
+  }
+
+  /**
    * Multi-Source Evidence Retrieval Pipeline for an individual claim
-   * Executes Fact-Check, Live News, Knowledge Repositories, and Web search in parallel
    */
   private async retrieveForClaim(
     claim: ExtractedClaim,
     isTimeSensitive = false
   ): Promise<Omit<RetrievedEvidenceItem, 'id' | 'claimId'>[]> {
-    const query = this.constructSearchQuery(claim.text, isTimeSensitive);
-    if (!query) {
-      return [];
-    }
+    const searchQueries = this.generateSearchQueries(claim.text, isTimeSensitive);
+    const primaryQuery = searchQueries[0] || claim.text;
 
     const rawCandidates: RawCandidate[] = [];
     const seenUrls = new Set<string>();
@@ -94,9 +137,9 @@ export class EvidenceRetrieverService {
     // Execute ALL Multi-Source Streams in Parallel
     // -------------------------------------------------------------
     const searchTasks: Promise<void>[] = [
-      // 1. Google Fact Check API
+      // 1. Google Fact Check API (Primary Query)
       googleFactCheckService
-        .searchFactChecks(query)
+        .searchFactChecks(primaryQuery)
         .then((fcs) => {
           for (const fc of fcs) {
             addCandidate({
@@ -106,24 +149,14 @@ export class EvidenceRetrieverService {
               snippet: fc.snippet,
               publishedDate: fc.publishedDate,
               priorityTier: 2,
+              sourceType: 'fact_check',
             });
           }
         })
         .catch(() => {}),
 
-      // 2. Google News RSS Live Wires
-      this.searchGoogleNewsRss(query, 4)
-        .then((nrs) => {
-          for (const nr of nrs) {
-            const regCheck = sourceRegistry.matchSource(nr.publisher) || sourceRegistry.matchSource(nr.url);
-            const tier = regCheck ? regCheck.credibilityTier : 3;
-            addCandidate({ ...nr, priorityTier: tier });
-          }
-        })
-        .catch(() => {}),
-
-      // 3. Knowledge & Reference Repositories (Intro Extracts + Search)
-      this.fetchKnowledgeExtracts(claim)
+      // 2. Authoritative Knowledge & Reference Repositories (Encyclopædia Britannica, National Geographic, ThoughtCo, Wikipedia)
+      this.fetchAuthoritativeReferences(claim, searchQueries)
         .then((krs) => {
           for (const kr of krs) {
             addCandidate(kr);
@@ -131,8 +164,19 @@ export class EvidenceRetrieverService {
         })
         .catch(() => {}),
 
-      // 4. DuckDuckGo Web Search
-      this.searchWeb(query, 3)
+      // 3. Google News RSS Live Wires (Searches primary query)
+      this.searchGoogleNewsRss(primaryQuery, 4)
+        .then((nrs) => {
+          for (const nr of nrs) {
+            const regCheck = sourceRegistry.matchSource(nr.publisher) || sourceRegistry.matchSource(nr.url);
+            const tier = regCheck ? regCheck.credibilityTier : 3;
+            addCandidate({ ...nr, priorityTier: tier, sourceType: 'news' });
+          }
+        })
+        .catch(() => {}),
+
+      // 4. DuckDuckGo Web Search (Searches across generated queries)
+      this.searchWeb(primaryQuery, 3)
         .then((wrs) => {
           for (const wr of wrs) {
             const regCheck = sourceRegistry.matchSource(wr.publisher) || sourceRegistry.matchSource(wr.url);
@@ -143,13 +187,27 @@ export class EvidenceRetrieverService {
         .catch(() => {}),
     ];
 
+    if (searchQueries.length > 1) {
+      searchTasks.push(
+        this.searchWeb(searchQueries[1], 2)
+          .then((wrs) => {
+            for (const wr of wrs) {
+              const regCheck = sourceRegistry.matchSource(wr.publisher) || sourceRegistry.matchSource(wr.url);
+              const tier = regCheck ? regCheck.credibilityTier : 3;
+              addCandidate({ ...wr, priorityTier: tier });
+            }
+          })
+          .catch(() => {})
+      );
+    }
+
     if (isInstitutional) {
-      const govQuery = `${query} (site:gov.in OR site:nic.in OR site:pib.gov.in OR site:rbi.org.in OR site:who.int OR site:un.org)`;
+      const govQuery = `${primaryQuery} (site:gov.in OR site:nic.in OR site:pib.gov.in OR site:rbi.org.in OR site:who.int OR site:un.org)`;
       searchTasks.push(
         this.searchWeb(govQuery, 2)
           .then((grs) => {
             for (const g of grs) {
-              addCandidate({ ...g, priorityTier: 1 });
+              addCandidate({ ...g, priorityTier: 1, sourceType: 'official' });
             }
           })
           .catch(() => {})
@@ -159,7 +217,7 @@ export class EvidenceRetrieverService {
     // Await all parallel tasks
     await Promise.allSettled(searchTasks);
 
-    // Filter to top 5 highest-priority candidates for fast stance evaluation
+    // Filter to top 5 highest-priority candidates for stance evaluation
     rawCandidates.sort((a, b) => a.priorityTier - b.priorityTier);
     const prioritizedCandidates = rawCandidates.slice(0, 5);
 
@@ -186,14 +244,20 @@ export class EvidenceRetrieverService {
       const relevanceMultiplier = stance.relevance === 'direct' ? 1.0 : stance.relevance === 'related' ? 0.2 : 0.0;
       const finalContribution = Math.round(credScore * relevanceMultiplier);
 
+      const pubLower = resolvedName.toLowerCase();
       const sourceType: SourceType =
-        sourceEval.credibilityTier === 1
+        candidate.sourceType ||
+        (sourceEval.credibilityTier === 1
           ? 'official'
           : sourceEval.credibilityTier === 2
           ? 'fact_check'
+          : pubLower.includes('britannica') || pubLower.includes('encyclopedia')
+          ? 'encyclopedia'
+          : pubLower.includes('national geographic') || pubLower.includes('thoughtco') || pubLower.includes('worldatlas')
+          ? 'reference'
           : sourceEval.credibilityTier === 3 || sourceEval.credibilityTier === 4
           ? 'news'
-          : 'other';
+          : 'other');
 
       return {
         sourceName: resolvedName,
@@ -238,13 +302,15 @@ export class EvidenceRetrieverService {
   }
 
   /**
-   * Fetches direct encyclopedic / reference introductory extracts for entities (e.g. India, Asia, Ram Mandir)
+   * Fetches direct encyclopedic / reference introductory extracts (Britannica, Wikipedia, National Geographic)
    */
-  private async fetchKnowledgeExtracts(claim: ExtractedClaim): Promise<RawCandidate[]> {
+  private async fetchAuthoritativeReferences(
+    claim: ExtractedClaim,
+    searchQueries: string[]
+  ): Promise<RawCandidate[]> {
     const candidates: RawCandidate[] = [];
     const entities = claim.entities;
 
-    // Collect primary subjects to query
     const subjectsToQuery: string[] = [];
     if (entities?.locations && entities.locations.length > 0) {
       subjectsToQuery.push(...entities.locations);
@@ -256,15 +322,15 @@ export class EvidenceRetrieverService {
       subjectsToQuery.push(...entities.organizations);
     }
 
-    // If no specific entities identified, use query nouns
     if (subjectsToQuery.length === 0) {
       const cleaned = claim.text.replace(/[“”"'.,;!?()]/g, ' ').trim();
-      const firstNoun = cleaned.split(' ')[0];
-      if (firstNoun && firstNoun.length > 3) subjectsToQuery.push(firstNoun);
+      const firstWord = cleaned.split(' ')[0];
+      if (firstWord && firstWord.length > 3) subjectsToQuery.push(firstWord);
     }
 
     const uniqueSubjects = Array.from(new Set(subjectsToQuery)).slice(0, 2);
 
+    // 1. Wikipedia Direct Extract API
     for (const subj of uniqueSubjects) {
       const encoded = encodeURIComponent(subj);
       const url = `https://en.wikipedia.org/w/api.php?action=query&prop=extracts&exintro=1&explaintext=1&titles=${encoded}&format=json&utf8=1`;
@@ -297,16 +363,31 @@ export class EvidenceRetrieverService {
             candidates.push({
               title: `${title} (Knowledge Archive)`,
               url: `https://en.wikipedia.org/wiki/${encodeURIComponent(title.replace(/\s+/g, '_'))}`,
-              publisher: 'Wikipedia',
+              publisher: 'Wikipedia Knowledge Archive',
               snippet: extract.length > 300 ? extract.slice(0, 300) + '...' : extract,
               publishedDate: null,
               priorityTier: 4,
+              sourceType: 'encyclopedia',
             });
           }
         }
       } catch {
         clearTimeout(timeout);
       }
+    }
+
+    // 2. Targeted Reference Search (Britannica, National Geographic, WorldAtlas)
+    const refQuery = `${searchQueries[0]} (site:britannica.com OR site:nationalgeographic.com OR site:thoughtco.com OR site:worldatlas.com)`;
+    const refResults = await this.searchWeb(refQuery, 2);
+    for (const r of refResults) {
+      const pubLower = (r.publisher || '').toLowerCase();
+      const isBritannica = pubLower.includes('britannica');
+      candidates.push({
+        ...r,
+        publisher: isBritannica ? 'Encyclopædia Britannica' : r.publisher,
+        priorityTier: 4,
+        sourceType: isBritannica ? 'encyclopedia' : 'reference',
+      });
     }
 
     return candidates;
@@ -359,6 +440,7 @@ export class EvidenceRetrieverService {
             snippet: `${cleanTitle}. Reporting by ${publisher}. Published on ${pubDate || 'recent news wire'}.`,
             publishedDate: pubDate ? new Date(pubDate).toISOString().slice(0, 10) : null,
             priorityTier: 3,
+            sourceType: 'news',
           });
         }
       });
@@ -368,32 +450,6 @@ export class EvidenceRetrieverService {
       clearTimeout(timeout);
       return [];
     }
-  }
-
-  /**
-   * Constructs an effective search query from the claim text
-   */
-  private constructSearchQuery(claimText: string, isTimeSensitive = false): string {
-    let cleaned = claimText.replace(/[“”"'.,;!?()]/g, ' ').replace(/\s+/g, ' ').trim();
-    cleaned = cleaned.replace(/^(According to|Researchers found that|Studies show that|A report shows that)\s+/i, '');
-
-    if (/ruler party/i.test(cleaned)) {
-      cleaned = cleaned.replace(/ruler party/i, 'ruling party');
-    }
-
-    if (isTimeSensitive && /\b(ruling party|in power)\b/i.test(cleaned)) {
-      cleaned = `${cleaned} Union government`;
-    }
-
-    const stopWords = new Set(['is', 'are', 'was', 'were', 'located', 'situated', 'in', 'the', 'a', 'an', 'of', 'and', 'that', 'with', 'from', 'at']);
-    const words = cleaned.split(' ').filter((w) => w.length > 0);
-    const filteredWords = words.filter((w) => !stopWords.has(w.toLowerCase()) || w.length > 6);
-
-    const queryWords = filteredWords.length >= 2 ? filteredWords : words;
-    if (queryWords.length > 8) {
-      return queryWords.slice(0, 8).join(' ');
-    }
-    return queryWords.join(' ');
   }
 
   /**
@@ -453,13 +509,22 @@ export class EvidenceRetrieverService {
             publisher = urlElem.text().trim() || 'Web Source';
           }
 
+          const pubLower = publisher.toLowerCase();
+          const sourceType: SourceType =
+            pubLower.includes('britannica')
+              ? 'encyclopedia'
+              : pubLower.includes('thoughtco') || pubLower.includes('worldatlas') || pubLower.includes('nationalgeographic')
+              ? 'reference'
+              : 'other';
+
           candidates.push({
             title,
             url: targetUrl,
-            publisher,
+            publisher: pubLower.includes('britannica') ? 'Encyclopædia Britannica' : publisher,
             snippet,
             publishedDate: null,
             priorityTier: 3,
+            sourceType,
           });
         }
       });
