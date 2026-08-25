@@ -37,6 +37,7 @@ export interface ExtractedClaim {
   text: string;
   importance: number;
   claim_type: 'factual' | 'statistical' | 'historical' | 'quote' | string;
+  isTimeSensitive?: boolean;
   entities?: ExtractedEntities;
   evaluation?: ClaimForensicEvaluation;
 }
@@ -45,6 +46,7 @@ export type SourceType = 'official' | 'news' | 'fact_check' | 'academic' | 'othe
 
 export type RelationToClaim = 'SUPPORTS' | 'CONTRADICTS' | 'NEUTRAL' | 'INSUFFICIENT';
 export type EvidenceRelation = 'supports' | 'contradicts' | 'unclear';
+export type EvidenceRelevance = 'direct' | 'related' | 'irrelevant';
 
 export interface RetrievedEvidenceItem {
   id: string;
@@ -56,9 +58,13 @@ export interface RetrievedEvidenceItem {
   publishedDate: string | null;
   evidenceText: string;
   relationToClaim: RelationToClaim;
+  relevance: EvidenceRelevance;
+  confidence: number; // 0 - 100
   credibilityScore: number; // 0 - 100 based on Tier
   relevanceScore: number; // 0.0 - 1.0
+  keyEvidence: string;
   explanation: string;
+  finalContribution: number; // 0 - 100
 
   // Backward-compatible fields
   url: string;

@@ -1,6 +1,13 @@
 import * as cheerio from 'cheerio';
 import { decode } from 'html-entities';
-import { ExtractedClaim, RetrievedEvidenceItem, SourceType, EvidenceRelation, RelationToClaim } from '../types/api.js';
+import {
+  ExtractedClaim,
+  RetrievedEvidenceItem,
+  SourceType,
+  EvidenceRelation,
+  RelationToClaim,
+  EvidenceRelevance,
+} from '../types/api.js';
 import { sourceRegistry } from './sourceRegistry.service.js';
 import { stanceEvaluatorService } from './stanceEvaluator.service.js';
 import { googleFactCheckService } from './googleFactCheck.service.js';
@@ -15,7 +22,11 @@ interface RawCandidate {
 }
 
 const INSTITUTIONAL_TRIGGERS = [
-  /\b(government|govt|politics|public policy|law|court|supreme court|high court|election|eci|health|who|rbi|isro|nasa|official announcement|scheme|ministry|parliament|pm|president|statutory)\b/i,
+  /\b(government|govt|politics|public policy|law|court|supreme court|high court|election|eci|health|who|rbi|isro|nasa|official announcement|scheme|ministry|parliament|pm|president|statutory|ruling party|ruler party|in power)\b/i,
+];
+
+const TIME_SENSITIVE_TRIGGERS = [
+  /\b(current|present|ruler party|ruling party|in power|holds power|prime minister|president|chief minister|economic data|inflation rate|gdp|policy|regime)\b/i,
 ];
 
 export class EvidenceRetrieverService {
@@ -29,7 +40,10 @@ export class EvidenceRetrieverService {
 
     const prioritizedClaims = claims.slice(0, 5);
     const evidencePromises = prioritizedClaims.map(async (claim) => {
-      const claimEvidence = await this.retrieveForClaim(claim);
+      const isTimeSensitive = TIME_SENSITIVE_TRIGGERS.some((pat) => pat.test(claim.text));
+      claim.isTimeSensitive = isTimeSensitive;
+
+      const claimEvidence = await this.retrieveForClaim(claim, isTimeSensitive);
       return claimEvidence.map((ev, index) => ({
         id: `ev-${claim.id}-${index + 1}`,
         claimId: claim.id,
@@ -45,9 +59,10 @@ export class EvidenceRetrieverService {
    * Multi-Source Evidence Retrieval Pipeline for an individual claim
    */
   private async retrieveForClaim(
-    claim: ExtractedClaim
+    claim: ExtractedClaim,
+    isTimeSensitive = false
   ): Promise<Omit<RetrievedEvidenceItem, 'id' | 'claimId'>[]> {
-    const query = this.constructSearchQuery(claim.text);
+    const query = this.constructSearchQuery(claim.text, isTimeSensitive);
     if (!query) {
       return [];
     }
@@ -108,6 +123,14 @@ export class EvidenceRetrieverService {
           }
         }
       }
+
+      // For ruling party / political power claims, also search current government election outcome
+      if (isTimeSensitive && /\b(ruler party|ruling party|in power)\b/i.test(claim.text)) {
+        const polNews = await this.searchGoogleNewsRss(`India Union government ruling party election`, 3);
+        for (const pn of polNews) {
+          addCandidate(pn);
+        }
+      }
     } catch {
       // Non-blocking
     }
@@ -166,44 +189,11 @@ export class EvidenceRetrieverService {
     }
 
     // -------------------------------------------------------------
-    // Stage 5b: Entity Subject Query Expansion (For Falsified/Contradictory Claims)
-    // -------------------------------------------------------------
-    if (rawCandidates.length === 0) {
-      const entities = claim.entities;
-      let subjectQuery = '';
-      if (entities?.events && entities.events.length > 0) {
-        subjectQuery = `${entities.events[0]} location`;
-      } else if (entities?.organizations && entities.organizations.length > 0) {
-        subjectQuery = `${entities.organizations[0]} official`;
-      } else if (entities?.people && entities.people.length > 0) {
-        subjectQuery = `${entities.people[0]} news`;
-      }
-
-      if (subjectQuery) {
-        try {
-          const fallbackNews = await this.searchGoogleNewsRss(subjectQuery, 3);
-          for (const fn of fallbackNews) {
-            addCandidate(fn);
-          }
-          if (rawCandidates.length < 2) {
-            const fallbackWiki = await this.searchWikipedia(subjectQuery);
-            for (const fw of fallbackWiki) {
-              addCandidate(fw);
-            }
-          }
-        } catch {
-          // Non-blocking
-        }
-      }
-    }
-
-    // -------------------------------------------------------------
-    // Stage 6: Semantic Stance Evaluation & Ranking
+    // Stage 6: Claim-Level Exact Verification, Relevance & Detailed Logging
     // -------------------------------------------------------------
     const evidenceList: Omit<RetrievedEvidenceItem, 'id' | 'claimId'>[] = [];
 
     for (const candidate of rawCandidates) {
-      // Prioritize checking publisher name or direct source domain
       const sourceEval =
         sourceRegistry.getSourceCredibility(candidate.publisher) ||
         sourceRegistry.getSourceCredibility(candidate.url);
@@ -211,13 +201,21 @@ export class EvidenceRetrieverService {
       const resolvedName = sourceEval.isRegistered ? sourceEval.name : decode(candidate.publisher);
       const credScore = Math.round(sourceEval.credibilityWeight * 100);
 
-      // Perform deep AI / semantic stance evaluation
+      // Perform exact claim-level evidence verification
       const stance = await stanceEvaluatorService.evaluateStance(
         claim.text,
         candidate.snippet,
         candidate.title,
-        candidate.publisher
+        candidate.publisher,
+        isTimeSensitive
       );
+
+      // Final contribution calculation based on relevance
+      // direct -> 100% of source credibility
+      // related -> 20% of source credibility (very low weight)
+      // irrelevant -> 0% contribution
+      const relevanceMultiplier = stance.relevance === 'direct' ? 1.0 : stance.relevance === 'related' ? 0.2 : 0.0;
+      const finalContribution = Math.round(credScore * relevanceMultiplier);
 
       const sourceType: SourceType =
         sourceEval.credibilityTier === 1
@@ -228,6 +226,19 @@ export class EvidenceRetrieverService {
           ? 'news'
           : 'other';
 
+      // Detailed Forensic Logging (Requirement 18)
+      console.log(`\n============================================================`);
+      console.log(`[CLAIM-LEVEL EVIDENCE EVALUATION]`);
+      console.log(`  CLAIM: "${claim.text}"`);
+      console.log(`  SOURCE: ${resolvedName} (Tier ${sourceEval.credibilityTier}, Credibility: ${credScore}/100)`);
+      console.log(`  EVIDENCE SNIPPET: "${decode(candidate.snippet)}"`);
+      console.log(`  RELATION: ${stance.relation}`);
+      console.log(`  RELEVANCE: ${stance.relevance.toUpperCase()}`);
+      console.log(`  CONFIDENCE: ${stance.confidence}%`);
+      console.log(`  FINAL CONTRIBUTION: ${finalContribution}%`);
+      console.log(`  KEY EVIDENCE: "${stance.keyEvidence || 'None'}"`);
+      console.log(`============================================================\n`);
+
       evidenceList.push({
         sourceName: resolvedName,
         sourceUrl: candidate.url,
@@ -236,9 +247,13 @@ export class EvidenceRetrieverService {
         publishedDate: candidate.publishedDate,
         evidenceText: decode(candidate.snippet),
         relationToClaim: stance.relationToClaim,
+        relevance: stance.relevance,
+        confidence: stance.confidence,
         credibilityScore: credScore,
         relevanceScore: stance.relevanceScore,
+        keyEvidence: stance.keyEvidence,
         explanation: stance.explanation,
+        finalContribution,
 
         // Legacy compatibility
         url: candidate.url,
@@ -249,10 +264,10 @@ export class EvidenceRetrieverService {
       });
     }
 
-    // Rank evidence: Sort by composite score: (Credibility * 0.5) + (Relevance * 50) + Higher Tier Bonus
+    // Rank evidence: Sort by composite score: Final Contribution + Higher Tier Bonus + Relevance Score
     evidenceList.sort((a, b) => {
-      const scoreA = a.credibilityScore * 0.5 + a.relevanceScore * 50 + (6 - a.sourceTier) * 5;
-      const scoreB = b.credibilityScore * 0.5 + b.relevanceScore * 50 + (6 - b.sourceTier) * 5;
+      const scoreA = a.finalContribution * 0.7 + a.relevanceScore * 30 + (6 - a.sourceTier) * 5;
+      const scoreB = b.finalContribution * 0.7 + b.relevanceScore * 30 + (6 - b.sourceTier) * 5;
       return scoreB - scoreA;
     });
 
@@ -322,9 +337,18 @@ export class EvidenceRetrieverService {
   /**
    * Constructs an effective search query from the claim text
    */
-  private constructSearchQuery(claimText: string): string {
+  private constructSearchQuery(claimText: string, isTimeSensitive = false): string {
     let cleaned = claimText.replace(/[“”"']/g, ' ').replace(/\s+/g, ' ').trim();
     cleaned = cleaned.replace(/^(According to|Researchers found that|Studies show that|A report shows that)\s+/i, '');
+
+    // For political ruling party queries, normalize "ruler party" to "ruling party government"
+    if (/ruler party/i.test(cleaned)) {
+      cleaned = cleaned.replace(/ruler party/i, 'ruling party');
+    }
+
+    if (isTimeSensitive && /\b(ruling party|in power)\b/i.test(cleaned)) {
+      cleaned = `${cleaned} Union government`;
+    }
 
     const words = cleaned.split(' ').filter(Boolean);
     if (words.length > 9) {
