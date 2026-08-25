@@ -166,9 +166,9 @@ Return STRICT JSON only:
     const claimEntities = entityExtractorService.extractEntities(claimText);
     const evidenceEntities = entityExtractorService.extractEntities(`${evidenceTitle} ${evidenceSnippet}`);
 
-    // 1. Explicit debunk & fact-check contradiction markers
+    // 1. Explicit debunk & fact-check contradiction markers (Strict: Must explicitly target the factual claim)
     const contradictMarkers = [
-      /\b(fake news|debunked|false claim|misleading|hoax|untrue|fabricated|fact check: false|no evidence|incorrectly claimed|falsely claimed|did not happen)\b/i,
+      /\b(fact[- ]check:\s*(false|fake|misleading|untrue)|claim\s+(is|was)\s+(false|fake|fabricated|debunked|untrue)|no evidence\s+(to suggest|that)|debunked:\s*|falsely claimed that|hoax claim)\b/i,
     ];
 
     for (const pat of contradictMarkers) {
@@ -205,12 +205,12 @@ Return STRICT JSON only:
               explanation: `Location conflict: Claim states '${cLoc}', whereas evidence documents '${eLoc}'.`,
             };
           }
-          if (compat === 'SUPPORTIVE' && (combined.includes('mandir') || combined.includes('located') || combined.includes('temple'))) {
+          if (compat === 'SUPPORTIVE') {
             return {
               relation: 'supports',
               relationToClaim: 'SUPPORTS',
               relevance: 'direct',
-              confidence: 90,
+              confidence: 95,
               reasoning: `Geographic corroboration: Evidence confirms location in '${eLoc}', which is consistent with '${cLoc}'.`,
               keyEvidence: `Located in ${eLoc}`,
               stanceScore: 1,

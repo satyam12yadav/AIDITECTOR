@@ -57,7 +57,6 @@ export const analyzeArticle = async (
       return;
     }
     timings.extractionMs = Date.now() - tExtStart;
-    console.log(`[TIMING] Article extraction took ${timings.extractionMs}ms`);
 
     // 1. Extract factual claims
     const tClaimStart = Date.now();
@@ -69,13 +68,11 @@ export const analyzeArticle = async (
       entities: entityExtractorService.extractEntities(c.text),
     }));
     timings.claimExtractionMs = Date.now() - tClaimStart;
-    console.log(`[TIMING] Claim extraction took ${timings.claimExtractionMs}ms (extracted ${claims.length} claims)`);
 
     // 3. Multi-source concurrent evidence retrieval
     const tEvStart = Date.now();
     const evidence = await evidenceRetrieverService.retrieveEvidence(claims);
     timings.evidenceRetrievalMs = Date.now() - tEvStart;
-    console.log(`[TIMING] Evidence retrieval took ${timings.evidenceRetrievalMs}ms (retrieved ${evidence.length} items)`);
 
     // 4. Evidence-grounded AI reasoning per claim
     const tReasonStart = Date.now();
@@ -94,7 +91,6 @@ export const analyzeArticle = async (
       })
     );
     timings.aiReasoningMs = Date.now() - tReasonStart;
-    console.log(`[TIMING] AI reasoning took ${timings.aiReasoningMs}ms`);
 
     // 5. Calculate calibrated 5-pillar credibility score
     const tScoreStart = Date.now();
@@ -122,7 +118,34 @@ export const analyzeArticle = async (
     }
 
     timings.totalMs = Date.now() - reqStart;
-    console.log(`[TIMING] Total analysis completed in ${timings.totalMs}ms`);
+
+    // Structured Console Diagnostics (Requirement 9 & 11)
+    for (const claim of evaluatedClaims) {
+      const claimEvidence = evidence.filter((e) => e.claimId === claim.id);
+      const sourcesFound = claimEvidence.map((e) => e.sourceName || e.publisher);
+      const registryMatches = claimEvidence
+        .filter((e) => sourceRegistry.matchSource(e.sourceName || e.publisher)?.name)
+        .map((e) => e.sourceName);
+
+      const geminiVerdict = claim.evaluation?.verdict || 'UNVERIFIED';
+      const stanceScore = geminiVerdict === 'TRUE' ? 1 : geminiVerdict === 'FALSE' ? -1 : 0;
+
+      console.log(`\n============================================================`);
+      console.log(`CLAIM: "${claim.text}"`);
+      console.log(`SOURCES REQUESTED: [Google FactCheck, Google News RSS, Knowledge Archives, Web Search]`);
+      console.log(`SOURCES FOUND: [${sourcesFound.join(', ') || 'No external sources retrieved'}]`);
+      console.log(`SOURCE REGISTRY MATCHES: [${registryMatches.join(', ') || 'None'}]`);
+      console.log(`SOURCE RELIABILITY: ${scoringResult.breakdown.sourceReliability}/100`);
+      console.log(`GEMINI STANCE: ${geminiVerdict} (Confidence: ${claim.evaluation?.confidence || 0}%)`);
+      console.log(`STANCE SCORE: ${stanceScore > 0 ? '+1' : stanceScore < 0 ? '-1' : '0'}`);
+      console.log(`CROSS-SOURCE AGREEMENT: ${scoringResult.breakdown.crossSourceAgreement}%`);
+      console.log(`FINAL SCORE: ${scoringResult.score}/100`);
+      console.log(`FINAL VERDICT: ${scoringResult.verdict}`);
+      if (claimEvidence.length === 0) {
+        console.log(`DIAGNOSTIC STATUS: Search returned no results / Insufficient empirical records`);
+      }
+      console.log(`============================================================\n`);
+    }
 
     const responseData: AnalyzeResponseData = {
       article: articleResult,

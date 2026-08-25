@@ -182,18 +182,36 @@ export class SourceRegistryService {
       norm.endsWith('.ac.in') ||
       norm.endsWith('.ac.uk') ||
       norm.includes('nature.com') ||
-      norm.includes('science.org') ||
-      norm.includes('sciencedirect.com') ||
       norm.includes('thelancet.com') ||
-      norm.includes('pnas.org')
+      norm.includes('sciencemag.org')
     ) {
       return {
         name: norm,
         domain: norm,
-        category: 'Academic / Peer-Reviewed Authority',
+        category: 'Academic & Peer-Reviewed Scientific Authority',
         credibilityTier: 2,
         credibilityWeight: SOURCE_TIER_CONFIG[2].baseWeight,
-        badge: 'Tier 2: Academic Authority',
+        badge: SOURCE_TIER_CONFIG[2].badge,
+        isRegistered: true,
+      };
+    }
+
+    // Check encyclopedic reference and curated knowledge archives for Tier 4
+    if (
+      norm === 'wikipedia.org' ||
+      norm.endsWith('.wikipedia.org') ||
+      norm === 'wikipedia' ||
+      norm === 'britannica.com' ||
+      norm.endsWith('.britannica.com') ||
+      norm === 'nationalgeographic.com'
+    ) {
+      return {
+        name: norm.includes('britannica') ? 'Encyclopædia Britannica' : norm.includes('wikipedia') ? 'Wikipedia Knowledge Archive' : 'National Geographic',
+        domain: norm,
+        category: 'Verified Encyclopedic Reference',
+        credibilityTier: 4,
+        credibilityWeight: 0.82,
+        badge: 'Tier 4: Verified Reference Archive',
         isRegistered: true,
       };
     }

@@ -39,7 +39,7 @@ export class EvidenceRetrieverService {
     }
 
     const tStart = Date.now();
-    const prioritizedClaims = claims.slice(0, 3); // Prioritize top 3 most important claims for high speed
+    const prioritizedClaims = claims.slice(0, 3);
 
     const evidencePromises = prioritizedClaims.map(async (claim) => {
       const isTimeSensitive = TIME_SENSITIVE_TRIGGERS.some((pat) => pat.test(claim.text));
@@ -67,7 +67,7 @@ export class EvidenceRetrieverService {
 
   /**
    * Multi-Source Evidence Retrieval Pipeline for an individual claim
-   * Parallelizes searches with strict timeouts and early returns
+   * Executes Fact-Check, Live News, Knowledge Repositories, and Web search in parallel
    */
   private async retrieveForClaim(
     claim: ExtractedClaim,
@@ -91,7 +91,7 @@ export class EvidenceRetrieverService {
     const isInstitutional = INSTITUTIONAL_TRIGGERS.some((pat) => pat.test(claim.text));
 
     // -------------------------------------------------------------
-    // Parallel Stage Execution (FactCheck + GoogleNewsRSS + Web + Institutional)
+    // Execute ALL Multi-Source Streams in Parallel
     // -------------------------------------------------------------
     const searchTasks: Promise<void>[] = [
       // 1. Google Fact Check API
@@ -115,18 +115,27 @@ export class EvidenceRetrieverService {
       this.searchGoogleNewsRss(query, 4)
         .then((nrs) => {
           for (const nr of nrs) {
-            const regCheck = sourceRegistry.matchSource(nr.url) || sourceRegistry.matchSource(nr.publisher);
+            const regCheck = sourceRegistry.matchSource(nr.publisher) || sourceRegistry.matchSource(nr.url);
             const tier = regCheck ? regCheck.credibilityTier : 3;
             addCandidate({ ...nr, priorityTier: tier });
           }
         })
         .catch(() => {}),
 
-      // 3. DuckDuckGo Web Search
+      // 3. Knowledge & Reference Repositories (Intro Extracts + Search)
+      this.fetchKnowledgeExtracts(claim)
+        .then((krs) => {
+          for (const kr of krs) {
+            addCandidate(kr);
+          }
+        })
+        .catch(() => {}),
+
+      // 4. DuckDuckGo Web Search
       this.searchWeb(query, 3)
         .then((wrs) => {
           for (const wr of wrs) {
-            const regCheck = sourceRegistry.matchSource(wr.url) || sourceRegistry.matchSource(wr.publisher);
+            const regCheck = sourceRegistry.matchSource(wr.publisher) || sourceRegistry.matchSource(wr.url);
             const tier = regCheck ? regCheck.credibilityTier : 3;
             addCandidate({ ...wr, priorityTier: tier });
           }
@@ -134,7 +143,6 @@ export class EvidenceRetrieverService {
         .catch(() => {}),
     ];
 
-    // Optional Institutional search
     if (isInstitutional) {
       const govQuery = `${query} (site:gov.in OR site:nic.in OR site:pib.gov.in OR site:rbi.org.in OR site:who.int OR site:un.org)`;
       searchTasks.push(
@@ -148,40 +156,12 @@ export class EvidenceRetrieverService {
       );
     }
 
-    // Execute all primary search tasks in parallel with Promise.allSettled
+    // Await all parallel tasks
     await Promise.allSettled(searchTasks);
 
-    // -------------------------------------------------------------
-    // Secondary Fallback (Only if fewer than 2 candidates retrieved)
-    // -------------------------------------------------------------
-    if (rawCandidates.length < 2) {
-      const fallbackTasks: Promise<void>[] = [
-        this.searchWikipedia(query)
-          .then((wrs) => {
-            for (const w of wrs) {
-              addCandidate({ ...w, priorityTier: 4 });
-            }
-          })
-          .catch(() => {}),
-      ];
-
-      if (claim.entities?.events && claim.entities.events.length > 0) {
-        const ev = claim.entities.events[0];
-        fallbackTasks.push(
-          this.searchGoogleNewsRss(`${ev} location`, 2)
-            .then((nrs) => {
-              for (const nr of nrs) addCandidate(nr);
-            })
-            .catch(() => {})
-        );
-      }
-
-      await Promise.allSettled(fallbackTasks);
-    }
-
-    // Filter to top 4 highest-priority candidates for fast stance evaluation
+    // Filter to top 5 highest-priority candidates for fast stance evaluation
     rawCandidates.sort((a, b) => a.priorityTier - b.priorityTier);
-    const prioritizedCandidates = rawCandidates.slice(0, 4);
+    const prioritizedCandidates = rawCandidates.slice(0, 5);
 
     // -------------------------------------------------------------
     // Concurrent Claim-Level Stance Evaluation
@@ -215,19 +195,6 @@ export class EvidenceRetrieverService {
           ? 'news'
           : 'other';
 
-      // Log transparent diagnostics
-      console.log(`\n============================================================`);
-      console.log(`[CLAIM-LEVEL EVIDENCE EVALUATION]`);
-      console.log(`  CLAIM: "${claim.text}"`);
-      console.log(`  SOURCE: ${resolvedName} (Tier ${sourceEval.credibilityTier}, Credibility: ${credScore}/100)`);
-      console.log(`  EVIDENCE SNIPPET: "${decode(candidate.snippet)}"`);
-      console.log(`  RELATION: ${stance.relation}`);
-      console.log(`  RELEVANCE: ${stance.relevance.toUpperCase()}`);
-      console.log(`  CONFIDENCE: ${stance.confidence}%`);
-      console.log(`  FINAL CONTRIBUTION: ${finalContribution}%`);
-      console.log(`  KEY EVIDENCE: "${stance.keyEvidence || 'None'}"`);
-      console.log(`============================================================\n`);
-
       return {
         sourceName: resolvedName,
         sourceUrl: candidate.url,
@@ -260,7 +227,7 @@ export class EvidenceRetrieverService {
       }
     }
 
-    // Rank evidence: Final Contribution + Higher Tier Bonus + Relevance Score
+    // Rank evidence: Direct support from higher tier sources comes first
     evidenceList.sort((a, b) => {
       const scoreA = a.finalContribution * 0.7 + a.relevanceScore * 30 + (6 - a.sourceTier) * 5;
       const scoreB = b.finalContribution * 0.7 + b.relevanceScore * 30 + (6 - b.sourceTier) * 5;
@@ -268,6 +235,81 @@ export class EvidenceRetrieverService {
     });
 
     return evidenceList.slice(0, 3);
+  }
+
+  /**
+   * Fetches direct encyclopedic / reference introductory extracts for entities (e.g. India, Asia, Ram Mandir)
+   */
+  private async fetchKnowledgeExtracts(claim: ExtractedClaim): Promise<RawCandidate[]> {
+    const candidates: RawCandidate[] = [];
+    const entities = claim.entities;
+
+    // Collect primary subjects to query
+    const subjectsToQuery: string[] = [];
+    if (entities?.locations && entities.locations.length > 0) {
+      subjectsToQuery.push(...entities.locations);
+    }
+    if (entities?.events && entities.events.length > 0) {
+      subjectsToQuery.push(...entities.events);
+    }
+    if (entities?.organizations && entities.organizations.length > 0) {
+      subjectsToQuery.push(...entities.organizations);
+    }
+
+    // If no specific entities identified, use query nouns
+    if (subjectsToQuery.length === 0) {
+      const cleaned = claim.text.replace(/[“”"'.,;!?()]/g, ' ').trim();
+      const firstNoun = cleaned.split(' ')[0];
+      if (firstNoun && firstNoun.length > 3) subjectsToQuery.push(firstNoun);
+    }
+
+    const uniqueSubjects = Array.from(new Set(subjectsToQuery)).slice(0, 2);
+
+    for (const subj of uniqueSubjects) {
+      const encoded = encodeURIComponent(subj);
+      const url = `https://en.wikipedia.org/w/api.php?action=query&prop=extracts&exintro=1&explaintext=1&titles=${encoded}&format=json&utf8=1`;
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 3500);
+
+      try {
+        const response = await fetch(url, {
+          signal: controller.signal,
+          headers: {
+            'User-Agent': 'FakeNewsKiller/1.0 (Forensic-Verification-Engine)',
+            Accept: 'application/json',
+          },
+        });
+
+        clearTimeout(timeout);
+        if (!response.ok) continue;
+
+        const data = (await response.json()) as any;
+        const pages = data?.query?.pages || {};
+
+        for (const pid of Object.keys(pages)) {
+          if (pid === '-1') continue;
+          const page = pages[pid];
+          const title = page.title || subj;
+          const extract = (page.extract || '').trim();
+
+          if (extract && extract.length > 30) {
+            candidates.push({
+              title: `${title} (Knowledge Archive)`,
+              url: `https://en.wikipedia.org/wiki/${encodeURIComponent(title.replace(/\s+/g, '_'))}`,
+              publisher: 'Wikipedia',
+              snippet: extract.length > 300 ? extract.slice(0, 300) + '...' : extract,
+              publishedDate: null,
+              priorityTier: 4,
+            });
+          }
+        }
+      } catch {
+        clearTimeout(timeout);
+      }
+    }
+
+    return candidates;
   }
 
   /**
@@ -343,7 +385,6 @@ export class EvidenceRetrieverService {
       cleaned = `${cleaned} Union government`;
     }
 
-    // Strip common filler / stop words from search queries so search engines match core entities & predicates
     const stopWords = new Set(['is', 'are', 'was', 'were', 'located', 'situated', 'in', 'the', 'a', 'an', 'of', 'and', 'that', 'with', 'from', 'at']);
     const words = cleaned.split(' ').filter((w) => w.length > 0);
     const filteredWords = words.filter((w) => !stopWords.has(w.toLowerCase()) || w.length > 6);
@@ -353,56 +394,6 @@ export class EvidenceRetrieverService {
       return queryWords.slice(0, 8).join(' ');
     }
     return queryWords.join(' ');
-  }
-
-  /**
-   * Queries Wikipedia Search & Summary REST API with 3.5s timeout
-   */
-  private async searchWikipedia(query: string): Promise<RawCandidate[]> {
-    const encoded = encodeURIComponent(query);
-    const url = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encoded}&format=json&utf8=1&srlimit=2`;
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 3500);
-
-    try {
-      const response = await fetch(url, {
-        signal: controller.signal,
-        headers: {
-          'User-Agent': 'FakeNewsKiller/1.0 (Forensic-Verification-Engine)',
-          Accept: 'application/json',
-        },
-      });
-
-      clearTimeout(timeout);
-      if (!response.ok) return [];
-
-      const data = (await response.json()) as any;
-      const searchResults = data?.query?.search || [];
-
-      const candidates: RawCandidate[] = [];
-
-      for (const res of searchResults) {
-        if (!res.title) continue;
-        const pageTitle = res.title;
-        const pageUrl = `https://en.wikipedia.org/wiki/${encodeURIComponent(pageTitle.replace(/\s+/g, '_'))}`;
-        const cleanSnippet = (res.snippet || '').replace(/<\/?[^>]+(>|$)/g, ' ').replace(/\s+/g, ' ').trim();
-
-        candidates.push({
-          title: pageTitle,
-          url: pageUrl,
-          publisher: 'Wikipedia',
-          snippet: cleanSnippet || `Knowledge archive record for ${pageTitle}.`,
-          publishedDate: null,
-          priorityTier: 4,
-        });
-      }
-
-      return candidates;
-    } catch {
-      clearTimeout(timeout);
-      return [];
-    }
   }
 
   /**

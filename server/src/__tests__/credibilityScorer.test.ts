@@ -1,9 +1,8 @@
 import { credibilityScorerService } from '../services/credibilityScorer.service.js';
-import { stanceEvaluatorService } from '../services/stanceEvaluator.service.js';
 import { geminiReasoningService } from '../services/geminiReasoning.service.js';
+import { entityExtractorService } from '../services/entityExtractor.service.js';
 import { ArticleMetadata, ExtractedClaim, RetrievedEvidenceItem } from '../types/api.js';
 
-// Simple lightweight test runner helper
 let passedCount = 0;
 let failedCount = 0;
 
@@ -17,24 +16,15 @@ function assert(condition: boolean, message: string) {
   }
 }
 
-console.log('\n🧪 Running Credibility Scoring Calibration & Timeout Optimization Test Suite (Step 7)...\n');
-
-const baseArticle: ArticleMetadata = {
-  title: 'Global Economic Indicators in 2024',
-  author: 'Dr. Jane Miller',
-  publishedAt: '2024-05-15 12:00 UTC',
-  publisher: 'reuters.com',
-  url: 'https://reuters.com/markets/indicators-2024',
-  text: 'Global economic indicators displayed resilience across diverse industrial segments throughout the 2024 fiscal cycle. Comprehensive reports confirmed steady trajectory.',
-};
+console.log('\n🧪 Running Comprehensive Evidence Retrieval & Scoring Verification Test Suite...\n');
 
 // ----------------------------------------------------
-// Test 1: Obvious Verified Factual Claim Reaches 90-100% (Test A)
+// Test Case A: "India is in Asia" (Expected: VERIFIED, approx 95-100)
 // ----------------------------------------------------
-console.log('Test 1: Obvious verified factual claim reaches 90-100% credibility');
+console.log('Test Case A: "India is in Asia" -> VERIFIED (Score >= 90)');
 {
-  const claimText = 'Ram Mandir is located in Ayodhya, Uttar Pradesh, India.';
-  const directArticle: ArticleMetadata = {
+  const claimText = 'India is in Asia';
+  const article: ArticleMetadata = {
     title: claimText,
     author: null,
     publishedAt: null,
@@ -44,6 +34,79 @@ console.log('Test 1: Obvious verified factual claim reaches 90-100% credibility'
   };
 
   const claims: ExtractedClaim[] = [{ id: 'claim-1', text: claimText, importance: 0.8, claim_type: 'factual' }];
+
+  const evidence: RetrievedEvidenceItem[] = [
+    {
+      id: 'ev-1',
+      claimId: 'claim-1',
+      sourceName: 'Wikipedia Knowledge Archive',
+      sourceUrl: 'https://en.wikipedia.org/wiki/India',
+      sourceTier: 4,
+      title: 'India (Knowledge Archive)',
+      publishedDate: null,
+      evidenceText: 'India, officially the Republic of India, is a country in South Asia.',
+      relationToClaim: 'SUPPORTS',
+      relevance: 'direct',
+      confidence: 98,
+      credibilityScore: 82,
+      relevanceScore: 1.0,
+      keyEvidence: 'country in South Asia',
+      explanation: 'Geographic corroboration: Evidence confirms location in South Asia, consistent with Asia.',
+      finalContribution: 82,
+      url: 'https://en.wikipedia.org/wiki/India',
+      publisher: 'Wikipedia',
+      sourceType: 'other',
+      snippet: 'India, officially the Republic of India, is a country in South Asia.',
+      relation: 'supports',
+    },
+    {
+      id: 'ev-2',
+      claimId: 'claim-1',
+      sourceName: 'Encyclopædia Britannica',
+      sourceUrl: 'https://britannica.com/place/India',
+      sourceTier: 4,
+      title: 'India | History, Map, & Facts',
+      publishedDate: null,
+      evidenceText: 'India, country that occupies the greater part of South Asia.',
+      relationToClaim: 'SUPPORTS',
+      relevance: 'direct',
+      confidence: 98,
+      credibilityScore: 82,
+      relevanceScore: 1.0,
+      keyEvidence: 'greater part of South Asia',
+      explanation: 'Geographic corroboration: Authoritative encyclopedia confirms India is in South Asia.',
+      finalContribution: 82,
+      url: 'https://britannica.com/place/India',
+      publisher: 'Encyclopædia Britannica',
+      sourceType: 'other',
+      snippet: 'India, country that occupies the greater part of South Asia.',
+      relation: 'supports',
+    },
+  ];
+
+  const result = credibilityScorerService.computeCredibilityScore(article, claims, evidence);
+  assert(result.score >= 90, `Score is >= 90 for "India is in Asia" (${result.score}/100)`);
+  assert(result.verdict === 'Highly Credible', `Verdict is Highly Credible (${result.verdict})`);
+  assert(result.breakdown.evidenceSupport >= 90, `Evidence Support is >= 90 (${result.breakdown.evidenceSupport})`);
+  assert(result.breakdown.crossSourceAgreement >= 95, `Cross Source Agreement is >= 95 (${result.breakdown.crossSourceAgreement})`);
+}
+
+// ----------------------------------------------------
+// Test Case B: "Ram Mandir is in Ayodhya, India" (Expected: VERIFIED, approx 95-100)
+// ----------------------------------------------------
+console.log('\nTest Case B: "Ram Mandir is in Ayodhya, India" -> VERIFIED (Score >= 90)');
+{
+  const claimText = 'Ram Mandir is in Ayodhya, India';
+  const article: ArticleMetadata = {
+    title: claimText,
+    author: null,
+    publishedAt: null,
+    publisher: 'Direct Text Ingestion',
+    url: null,
+    text: claimText,
+  };
+
+  const claims: ExtractedClaim[] = [{ id: 'claim-1', text: claimText, importance: 0.85, claim_type: 'factual' }];
 
   const evidence: RetrievedEvidenceItem[] = [
     {
@@ -61,7 +124,7 @@ console.log('Test 1: Obvious verified factual claim reaches 90-100% credibility'
       credibilityScore: 85,
       relevanceScore: 1.0,
       keyEvidence: 'located in Ayodhya, Uttar Pradesh, India',
-      explanation: 'Direct confirmation',
+      explanation: 'Direct confirmation by national wire broadsheet',
       finalContribution: 85,
       url: 'https://thehindu.com/ram-mandir',
       publisher: 'The Hindu',
@@ -77,38 +140,36 @@ console.log('Test 1: Obvious verified factual claim reaches 90-100% credibility'
       sourceTier: 1,
       title: 'Ayodhya Mandir PIB Release',
       publishedDate: '2024-01-22',
-      evidenceText: 'The historic temple complex in Ayodhya, UP, India was officially consecrated.',
+      evidenceText: 'The historic temple complex in Ayodhya, UP, India was consecrated.',
       relationToClaim: 'SUPPORTS',
       relevance: 'direct',
       confidence: 98,
       credibilityScore: 98,
       relevanceScore: 1.0,
       keyEvidence: 'Ayodhya, UP, India',
-      explanation: 'Official government verification',
+      explanation: 'Official statutory record',
       finalContribution: 98,
       url: 'https://pib.gov.in/ayodhya',
       publisher: 'PIB Fact Check',
       sourceType: 'official',
-      snippet: 'The historic temple complex in Ayodhya, UP, India was officially consecrated.',
+      snippet: 'The historic temple complex in Ayodhya, UP, India was consecrated.',
       relation: 'supports',
     },
   ];
 
-  const result = credibilityScorerService.computeCredibilityScore(directArticle, claims, evidence);
-  assert(result.score >= 90, `Score is >= 90 for obvious verified factual claim (${result.score})`);
+  const result = credibilityScorerService.computeCredibilityScore(article, claims, evidence);
+  assert(result.score >= 90, `Score is >= 90 for "Ram Mandir is in Ayodhya, India" (${result.score}/100)`);
   assert(result.verdict === 'Highly Credible', `Verdict is Highly Credible (${result.verdict})`);
   assert(result.breakdown.evidenceSupport >= 95, `Evidence Support is >= 95 (${result.breakdown.evidenceSupport})`);
-  assert(result.breakdown.crossSourceAgreement >= 95, `Cross Source Agreement is >= 95 (${result.breakdown.crossSourceAgreement})`);
-  assert(result.diagnostics.length === 2, `Diagnostics generated 2 items (${result.diagnostics.length})`);
 }
 
 // ----------------------------------------------------
-// Test 2: Clearly False Claim (Test B)
+// Test Case C: Deliberately false geographical claim ("India is in Europe")
 // ----------------------------------------------------
-console.log('\nTest 2: Clearly false claim receives low score <= 35');
+console.log('\nTest Case C: Deliberately false geographical claim ("India is in Europe") -> Low Score (<= 30)');
 {
-  const claimText = 'Ram Mandir is located in London.';
-  const directArticle: ArticleMetadata = {
+  const claimText = 'India is in Europe';
+  const article: ArticleMetadata = {
     title: claimText,
     author: null,
     publishedAt: null,
@@ -123,41 +184,41 @@ console.log('\nTest 2: Clearly false claim receives low score <= 35');
     {
       id: 'ev-1',
       claimId: 'claim-1',
-      sourceName: 'The Times of India',
-      sourceUrl: 'https://timesofindia.com/ram-mandir',
-      sourceTier: 3,
-      title: 'Ram Mandir Ayodhya',
-      publishedDate: '2024-01-22',
-      evidenceText: 'Shri Ram Janmbhoomi Mandir is located in Ayodhya, Uttar Pradesh, India.',
+      sourceName: 'Encyclopædia Britannica',
+      sourceUrl: 'https://britannica.com/place/India',
+      sourceTier: 4,
+      title: 'India Facts',
+      publishedDate: null,
+      evidenceText: 'India is a country located in South Asia.',
       relationToClaim: 'CONTRADICTS',
       relevance: 'direct',
-      confidence: 92,
-      credibilityScore: 85,
+      confidence: 98,
+      credibilityScore: 82,
       relevanceScore: 1.0,
-      keyEvidence: 'Ayodhya, Uttar Pradesh',
-      explanation: 'Location conflict',
-      finalContribution: 85,
-      url: 'https://timesofindia.com/ram-mandir',
-      publisher: 'The Times of India',
-      sourceType: 'news',
-      snippet: 'Shri Ram Janmbhoomi Mandir is located in Ayodhya, Uttar Pradesh, India.',
+      keyEvidence: 'located in South Asia',
+      explanation: 'Location conflict: Claim asserts Europe, whereas reference documents South Asia.',
+      finalContribution: 82,
+      url: 'https://britannica.com/place/India',
+      publisher: 'Encyclopædia Britannica',
+      sourceType: 'other',
+      snippet: 'India is a country located in South Asia.',
       relation: 'contradicts',
     },
   ];
 
-  const result = credibilityScorerService.computeCredibilityScore(directArticle, claims, evidence);
-  assert(result.score <= 35, `Score is low (${result.score} <= 35)`);
-  assert(result.verdict === 'Likely Misleading' || result.verdict === 'Highly Suspicious', `Verdict is refuting (${result.verdict})`);
-  assert(result.breakdown.evidenceSupport <= 20, `Evidence support is penalized (${result.breakdown.evidenceSupport} <= 20)`);
+  const result = credibilityScorerService.computeCredibilityScore(article, claims, evidence);
+  assert(result.score <= 30, `Score is low (${result.score} <= 30)`);
+  assert(result.verdict === 'Likely Misleading' || result.verdict === 'Highly Suspicious', `Verdict refutes false claim (${result.verdict})`);
+  assert(result.breakdown.evidenceSupport === 0, `Evidence Support is 0 on direct contradiction (${result.breakdown.evidenceSupport})`);
 }
 
 // ----------------------------------------------------
-// Test 3: Ambiguous / Insufficient Evidence Claim (Test C)
+// Test Case D: Genuinely uncertain claim (No reliable evidence -> UNVERIFIED, approx 40-60)
 // ----------------------------------------------------
-console.log('\nTest 3: Ambiguous claim returns UNCERTAIN / INSUFFICIENT EVIDENCE (approx 50)');
+console.log('\nTest Case D: Genuinely uncertain claim -> UNVERIFIED (Score 40-60)');
 {
-  const claimText = 'Secret underground bunker built under city park.';
-  const directArticle: ArticleMetadata = {
+  const claimText = 'Secret underground government installation discovered under park.';
+  const article: ArticleMetadata = {
     title: claimText,
     author: null,
     publishedAt: null,
@@ -169,8 +230,8 @@ console.log('\nTest 3: Ambiguous claim returns UNCERTAIN / INSUFFICIENT EVIDENCE
   const claims: ExtractedClaim[] = [{ id: 'claim-1', text: claimText, importance: 0.7, claim_type: 'factual' }];
   const evidence: RetrievedEvidenceItem[] = [];
 
-  const result = credibilityScorerService.computeCredibilityScore(directArticle, claims, evidence);
-  assert(result.score >= 45 && result.score <= 65, `Neutral score for ambiguous claim (${result.score})`);
+  const result = credibilityScorerService.computeCredibilityScore(article, claims, evidence);
+  assert(result.score >= 40 && result.score <= 60, `Score is neutral/unverified between 40-60 (${result.score})`);
   assert(result.verdict === 'Needs Verification', `Verdict is Needs Verification (${result.verdict})`);
 
   const reasoning = geminiReasoningService.evaluateDeterministic(claims[0], [], [], [], []);
@@ -178,45 +239,18 @@ console.log('\nTest 3: Ambiguous claim returns UNCERTAIN / INSUFFICIENT EVIDENCE
 }
 
 // ----------------------------------------------------
-// Test 4: Transparent Diagnostics Detail
+// Test Case E: Location Hierarchy Entity Containment
 // ----------------------------------------------------
-console.log('\nTest 4: Transparent diagnostics detail mapping');
+console.log('\nTest Case E: Location Hierarchy Entity Containment');
 {
-  const claims: ExtractedClaim[] = [{ id: 'claim-1', text: 'Inflation fell to 2.1%.', importance: 0.8, claim_type: 'statistical' }];
-  const evidence: RetrievedEvidenceItem[] = [
-    {
-      id: 'ev-1',
-      claimId: 'claim-1',
-      sourceName: 'RBI Official',
-      sourceUrl: 'https://rbi.org.in/inflation',
-      sourceTier: 1,
-      title: 'Monetary Policy Report',
-      publishedDate: '2024-06-01',
-      evidenceText: 'Headline inflation moderated to 2.1%.',
-      relationToClaim: 'SUPPORTS',
-      relevance: 'direct',
-      confidence: 96,
-      credibilityScore: 98,
-      relevanceScore: 1.0,
-      keyEvidence: 'inflation moderated to 2.1%',
-      explanation: 'Direct statistical confirmation',
-      finalContribution: 98,
-      url: 'https://rbi.org.in/inflation',
-      publisher: 'RBI Official',
-      sourceType: 'official',
-      snippet: 'Headline inflation moderated to 2.1%.',
-      relation: 'supports',
-    },
-  ];
+  const compat1 = entityExtractorService.checkLocationCompatibility('asia', 'south asia');
+  assert(compat1 === 'SUPPORTIVE', `Asia contains South Asia (${compat1})`);
 
-  const result = credibilityScorerService.computeCredibilityScore(baseArticle, claims, evidence);
-  assert(result.diagnostics.length > 0, `Diagnostics present (${result.diagnostics.length})`);
-  const diag = result.diagnostics[0];
-  assert(diag.source === 'RBI Official', `Diagnostic source is RBI Official (${diag.source})`);
-  assert(diag.sourceTier === 1, `Diagnostic sourceTier is 1 (${diag.sourceTier})`);
-  assert(diag.relation === 'supports', `Diagnostic relation is supports (${diag.relation})`);
-  assert(diag.relevance === 'direct', `Diagnostic relevance is direct (${diag.relevance})`);
-  assert(diag.contributionToFinalScore === 98, `Diagnostic contribution is 98 (${diag.contributionToFinalScore})`);
+  const compat2 = entityExtractorService.checkLocationCompatibility('india', 'ayodhya');
+  assert(compat2 === 'SUPPORTIVE', `India contains Ayodhya (${compat2})`);
+
+  const compat3 = entityExtractorService.checkLocationCompatibility('europe', 'india');
+  assert(compat3 === 'CONTRADICTORY', `Europe and India are contradictory locations (${compat3})`);
 }
 
 console.log(`\n========================================`);

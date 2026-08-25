@@ -45,7 +45,15 @@ export class CredibilityScorerService {
       claimVerification * 0.15 +
       articleQuality * 0.10;
 
-    const finalScore = Math.max(0, Math.min(100, Math.round(rawScore)));
+    let finalScore = Math.max(0, Math.min(100, Math.round(rawScore)));
+
+    // When independent evidence directly contradicts core claims, cap final credibility score
+    const hasContradiction = evidence.some(
+      (e) => (e.relationToClaim === 'CONTRADICTS' || e.relation === 'contradicts') && (e.relevance === 'direct' || !e.relevance)
+    );
+    if (hasContradiction && claimVerification === 0) {
+      finalScore = Math.min(finalScore, 25);
+    }
 
     // 3. Map to Verdict tier
     const verdict = this.getVerdict(finalScore);
