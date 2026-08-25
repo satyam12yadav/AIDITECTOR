@@ -116,9 +116,9 @@ export class CredibilityScorerService {
       } else if (hasSupport) {
         // Supported: evaluate high-trust vs standard sources
         const bestSource = matchingEv.reduce((acc, curr) => {
-          const registryCheck = sourceRegistry.matchSource(curr.publisher || curr.url);
-          const score = registryCheck
-            ? registryCheck.trustWeight * 100
+          const evalResult = sourceRegistry.getSourceCredibility(curr.publisher || curr.url);
+          const score = evalResult.isRegistered
+            ? evalResult.credibilityWeight * 100
             : curr.sourceType === 'official' || curr.sourceType === 'academic' || curr.sourceType === 'fact_check'
             ? 95
             : 85;
@@ -156,33 +156,8 @@ export class CredibilityScorerService {
     for (const item of evidence) {
       const pub = (item.publisher || item.url).toLowerCase();
       if (!publisherScores.has(pub)) {
-        // 1. Check verified database
-        const match = sourceRegistry.matchSource(pub) || sourceRegistry.matchSource(item.url);
-        if (match) {
-          publisherScores.set(pub, Math.round(match.trustWeight * 100));
-          continue;
-        }
-
-        let score = 50;
-        switch (item.sourceType) {
-          case 'official':
-            score = 95;
-            break;
-          case 'academic':
-            score = 92;
-            break;
-          case 'fact_check':
-            score = 92;
-            break;
-          case 'news':
-            score = 82;
-            break;
-          case 'other':
-          default:
-            score = 50;
-            break;
-        }
-        publisherScores.set(pub, score);
+        const evalResult = sourceRegistry.getSourceCredibility(pub);
+        publisherScores.set(pub, Math.round(evalResult.credibilityWeight * 100));
       }
     }
 
@@ -190,14 +165,14 @@ export class CredibilityScorerService {
       limitations.push('No independent external sources were retrieved to establish empirical source reliability.');
       // Check if the ingested article itself is from our verified database
       if (article.publisher && article.publisher !== 'Direct Text Ingestion') {
-        const match = sourceRegistry.matchSource(article.publisher) || (article.url ? sourceRegistry.matchSource(article.url) : null);
-        if (match) {
-          return Math.round(match.trustWeight * 100);
+        const evalResult = sourceRegistry.getSourceCredibility(article.url || article.publisher);
+        if (evalResult.isRegistered) {
+          return Math.round(evalResult.credibilityWeight * 100);
         }
         const pubLower = article.publisher.toLowerCase();
-        if (pubLower.includes('.gov') || pubLower.includes('who.int')) return 90;
-        if (pubLower.includes('.edu')) return 88;
-        if (pubLower.includes('reuters') || pubLower.includes('apnews') || pubLower.includes('bbc')) return 80;
+        if (pubLower.includes('.gov') || pubLower.includes('who.int')) return 98;
+        if (pubLower.includes('.edu')) return 90;
+        if (pubLower.includes('reuters') || pubLower.includes('apnews') || pubLower.includes('bbc')) return 85;
         return 65;
       }
       return 50; // Neutral baseline
