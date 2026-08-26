@@ -120,6 +120,54 @@ export const ClaimCard: React.FC<ClaimCardProps> = ({
               {claim.reasoning || claim.flagReason || 'Evaluation generated from authoritative evidence retrieval.'}
             </p>
           </div>
+
+          {/* Compound Claim Subclaims Breakdown (Requirement 10) */}
+          {claim.subclaims && claim.subclaims.length > 0 && (
+            <div className="mt-3 p-3.5 rounded-lg bg-surface-container-high/60 border border-outline-variant">
+              <div className="flex items-center gap-1.5 mb-2.5">
+                <span className="material-symbols-outlined text-[15px] text-primary">schema</span>
+                <span className="font-label-caps text-[11px] font-bold text-primary uppercase tracking-wider">
+                  COMPOUND CLAIM — ATOMIC PROPOSITIONS
+                </span>
+              </div>
+              <div className="space-y-2">
+                {claim.subclaims.map((sub, sIdx) => {
+                  const isSup = sub.relation === 'supports';
+                  const isCon = sub.relation === 'contradicts';
+                  return (
+                    <div
+                      key={sub.id || sIdx}
+                      className="p-2.5 rounded bg-surface-container-lowest border border-outline-variant/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+                    >
+                      <div className="flex items-start sm:items-center gap-2">
+                        <span
+                          className={`material-symbols-outlined text-[16px] mt-0.5 sm:mt-0 ${
+                            isSup ? 'text-[#059669]' : isCon ? 'text-[#dc2626]' : 'text-[#d97706]'
+                          }`}
+                        >
+                          {isSup ? 'check_circle' : isCon ? 'cancel' : 'help'}
+                        </span>
+                        <span className="text-xs font-semibold text-on-surface">
+                          {sub.attribute ? `Largest by ${sub.attribute}: ` : ''}"{sub.text}"
+                        </span>
+                      </div>
+                      <span
+                        className={`text-[10px] font-label-caps font-bold px-2 py-0.5 rounded border uppercase tracking-wider shrink-0 ${
+                          isSup
+                            ? 'bg-[#ecfdf5] text-[#065f46] border-[#a7f3d0]'
+                            : isCon
+                            ? 'bg-[#fef2f2] text-[#991b1b] border-[#fecaca]'
+                            : 'bg-surface-container text-on-surface-variant border-outline-variant'
+                        }`}
+                      >
+                        {isSup ? 'SUPPORTED' : isCon ? 'CONTRADICTED' : 'UNCLEAR'}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-3 shrink-0">

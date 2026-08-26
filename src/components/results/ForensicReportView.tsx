@@ -268,6 +268,51 @@ export const ForensicReportView: React.FC<ForensicReportViewProps> = ({ result }
                       "{claim.statement}"
                     </p>
 
+                    {/* Compound Claim Subclaims Breakdown */}
+                    {claim.subclaims && claim.subclaims.length > 0 && (
+                      <div className="mb-3 p-3 rounded bg-surface-container-high/60 border border-outline-variant">
+                        <span className="font-label-caps text-[10px] font-bold text-primary uppercase tracking-wider block mb-2">
+                          COMPOUND CLAIM — ATOMIC PROPOSITIONS
+                        </span>
+                        <div className="space-y-1.5">
+                          {claim.subclaims.map((sub, sIdx) => {
+                            const isSubSup = sub.relation === 'supports';
+                            const isSubCon = sub.relation === 'contradicts';
+                            return (
+                              <div
+                                key={sub.id || sIdx}
+                                className="p-2 rounded bg-white border border-outline-variant/60 flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 text-xs"
+                              >
+                                <div className="flex items-center gap-1.5">
+                                  <span
+                                    className={`material-symbols-outlined text-[15px] ${
+                                      isSubSup ? 'text-emerald-700' : isSubCon ? 'text-red-700' : 'text-amber-700'
+                                    }`}
+                                  >
+                                    {isSubSup ? 'check_circle' : isSubCon ? 'cancel' : 'help'}
+                                  </span>
+                                  <span className="font-medium text-on-surface">
+                                    {sub.attribute ? `Largest by ${sub.attribute}: ` : ''}"{sub.text}"
+                                  </span>
+                                </div>
+                                <span
+                                  className={`text-[10px] font-label-caps font-bold px-2 py-0.5 rounded border uppercase tracking-wider shrink-0 ${
+                                    isSubSup
+                                      ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                                      : isSubCon
+                                      ? 'bg-red-50 text-red-800 border-red-300'
+                                      : 'bg-surface-container text-on-surface-variant border-outline-variant'
+                                  }`}
+                                >
+                                  {isSubSup ? 'SUPPORTED' : isSubCon ? 'CONTRADICTED' : 'UNCLEAR'}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
                     {/* Why this verdict */}
                     <div className="bg-white/80 p-3 rounded border border-outline-variant/60 text-xs font-body-sm text-on-surface mb-3">
                       <strong>Why:</strong> {claim.reasoning || claim.flagReason || 'Evaluation synthesized from retrieved independent records.'}

@@ -8,6 +8,7 @@ import {
   MultiClaimArticleSummary,
 } from '../types/api.js';
 import { sourceRegistry } from './sourceRegistry.service.js';
+import { stanceEvaluatorService } from './stanceEvaluator.service.js';
 
 export interface CredibilityScoringResult {
   score: number;
@@ -326,6 +327,65 @@ export class CredibilityScorerService {
         claim.reasoning =
           unclearItems[0]?.explanation ||
           'Independent external evidence could not be located to verify or contradict this specific assertion.';
+      }
+
+      // 5. Compound Claim / Multi-Proposition Subclaim Aggregation (Requirement 5, 6, 7)
+      if (claim.subclaims && claim.subclaims.length > 0) {
+        for (const sub of claim.subclaims) {
+          const subEv = matchingEv.filter((e) => {
+            const text = (e.evidenceText || e.snippet || '').toLowerCase();
+            return (
+              (sub.attribute && text.includes(sub.attribute.toLowerCase())) ||
+              (sub.subject && text.includes(sub.subject.toLowerCase())) ||
+              matchingEv.length <= 3
+            );
+          });
+
+          let subRelation: 'supports' | 'contradicts' | 'unclear' = 'unclear';
+          let subReasoning = '';
+
+          for (const ev of (subEv.length > 0 ? subEv : matchingEv)) {
+            const res = stanceEvaluatorService.evaluateDeterministic(sub.text, ev.evidenceText || ev.snippet, ev.title, false);
+            if (res.relation === 'contradicts') {
+              subRelation = 'contradicts';
+              subReasoning = res.reasoning;
+              break;
+            }
+            if (res.relation === 'supports') {
+              subRelation = 'supports';
+              subReasoning = res.reasoning;
+            }
+          }
+
+          sub.relation = subRelation;
+          sub.reasoning = subReasoning || `Proposition evaluated as ${subRelation}.`;
+          sub.confidence = subRelation === 'supports' ? 95 : subRelation === 'contradicts' ? 98 : 50;
+        }
+
+        const subSup = claim.subclaims.filter((s) => s.relation === 'supports');
+        const subCon = claim.subclaims.filter((s) => s.relation === 'contradicts');
+        const subUnc = claim.subclaims.filter((s) => s.relation === 'unclear');
+
+        if (subCon.length > 0 && subSup.length > 0) {
+          // Mixed compound claim (Requirement 6 & 7)
+          claim.consensusStatus = 'CONFLICTING_EVIDENCE';
+          claim.relation = 'contradicts';
+          claim.claimScore = normalizedImp >= 0.65 ? 15 : 25;
+          claim.confidence = 92;
+          claim.reasoning = `Compound assertion contains contradicted propositions: ${subCon.map((c) => `"${c.text}" (CONTRADICTED)`).join(', ')}.`;
+        } else if (subCon.length === claim.subclaims.length) {
+          claim.consensusStatus = 'UNANIMOUS_CONTRADICTION';
+          claim.relation = 'contradicts';
+          claim.claimScore = normalizedImp >= 0.65 ? 5 : 15;
+          claim.confidence = 98;
+          claim.reasoning = `Compound assertion contradicted: All propositions refuted by authoritative evidence.`;
+        } else if (subSup.length === claim.subclaims.length) {
+          claim.consensusStatus = 'UNANIMOUS_SUPPORT';
+          claim.relation = 'supports';
+          claim.claimScore = Math.min(98, Math.max(88, maxSourceScore || 90));
+          claim.confidence = 96;
+          claim.reasoning = `All compound propositions verified: ${subSup.map((s) => `"${s.text}" (SUPPORTED)`).join(' and ')}.`;
+        }
       }
     }
   }

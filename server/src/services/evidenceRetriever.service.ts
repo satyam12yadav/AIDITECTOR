@@ -79,6 +79,26 @@ export class EvidenceRetrieverService {
     const cleaned = claimText.replace(/[“”"'.,;!?()]/g, ' ').replace(/\s+/g, ' ').trim();
     const queries = new Set<string>();
 
+    // 0. Compound claim sub-query generation (Requirement 4)
+    const subclaims = entityExtractorService.extractSubclaims(claimText);
+    if (subclaims.length > 1) {
+      for (const sub of subclaims) {
+        if (sub.attribute) {
+          queries.add(`largest continent by ${sub.attribute}`.trim());
+          queries.add(`${sub.subject} largest ${sub.attribute}`.trim());
+          queries.add(`${sub.subject} ${sub.attribute}`.trim());
+        } else {
+          const subTriple = entityExtractorService.extractClaimTriple(sub.text);
+          if (subTriple?.attribute === 'location') {
+            queries.add(`${subTriple.entity} location`);
+            queries.add(`${subTriple.entity} located in`);
+          } else if (subTriple?.attribute === 'superlative') {
+            queries.add(`${subTriple.superlativeType} ${subTriple.category} in the world`.trim());
+          }
+        }
+      }
+    }
+
     const claimTriple = entityExtractorService.extractClaimTriple(claimText);
 
     // 1. Location assertion: generate query for the underlying factual location

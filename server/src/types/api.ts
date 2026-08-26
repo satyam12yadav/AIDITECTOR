@@ -51,6 +51,20 @@ export type ClaimType =
   | 'event'
   | 'other';
 
+export interface SubClaim {
+  id: string;
+  claimId?: string;
+  subject: string;
+  predicate: string;
+  attribute?: string;
+  text: string;
+  relation?: 'supports' | 'contradicts' | 'unclear';
+  confidence?: number;
+  reasoning?: string;
+  evidence?: RetrievedEvidenceItem[];
+  claimScore?: number;
+}
+
 export interface ExtractedClaim {
   id: string;
   text: string;
@@ -63,6 +77,10 @@ export interface ExtractedClaim {
   value?: string;
   entities?: ExtractedEntities;
   evaluation?: ClaimForensicEvaluation;
+
+  // Step 13: Compound Claim Fields
+  isCompound?: boolean;
+  subclaims?: SubClaim[];
 
   // Step 7 & 9: Calibrated Claim-Level Fields
   relation?: 'supports' | 'contradicts' | 'unclear';

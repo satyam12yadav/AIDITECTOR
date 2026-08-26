@@ -28,6 +28,17 @@ export interface EvidenceItem {
   isAvailable: boolean;
 }
 
+export interface SubClaimItem {
+  id: string;
+  subject: string;
+  predicate: string;
+  attribute?: string;
+  text: string;
+  relation?: 'supports' | 'contradicts' | 'unclear';
+  confidence?: number;
+  reasoning?: string;
+}
+
 export interface ClaimItem {
   id: string;
   claimId: string;
@@ -45,6 +56,8 @@ export interface ClaimItem {
   strongestSource?: string;
   evidenceQuality?: 'HIGH' | 'MEDIUM' | 'LOW';
   reasoning?: string;
+  isCompound?: boolean;
+  subclaims?: SubClaimItem[];
   isTimeSensitive?: boolean;
   referenceDate?: string;
   latestEvidenceDate?: string | null;

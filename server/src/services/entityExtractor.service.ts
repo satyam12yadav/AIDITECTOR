@@ -1,4 +1,4 @@
-import { ExtractedEntities } from '../types/api.js';
+import { ExtractedEntities, SubClaim } from '../types/api.js';
 
 export interface ClaimTriple {
   entity: string;
@@ -221,12 +221,73 @@ export class EntityExtractorService {
 
     return {
       people: Array.from(new Set(people)),
-      organizations: Array.from(new Set(organizations)),
+  organizations: Array.from(new Set(organizations)),
       locations: Array.from(new Set(locations)),
       dates: Array.from(new Set(dates)),
       numbers: Array.from(new Set(numbers)),
       events: Array.from(new Set(events)),
     };
+  }
+
+  /**
+   * Decomposes compound claims or multi-proposition sentences into atomic subclaims
+   */
+  public extractSubclaims(claimText: string): SubClaim[] {
+    const clean = this.normalizeClaim(claimText);
+    const subclaims: SubClaim[] = [];
+
+    // 1. Dual-qualifier pattern: "[Base] by (both) [Attr1] and [Attr2]"
+    // e.g. "Asia is the largest continent in the world by both land area and total population."
+    const bothMatch = clean.match(/^(.+?)\s+by\s+(?:both\s+)?([a-zA-Z\s]+?)\s+(?:and|as well as)\s+([a-zA-Z\s]+?)[.]?$/i);
+    if (bothMatch) {
+      const baseStem = bothMatch[1].trim();
+      const attr1 = bothMatch[2].trim();
+      const attr2 = bothMatch[3].trim();
+
+      const words = baseStem.replace(/^(the|a|an)\s+/i, '').split(/\s+/);
+      const subject = words[0];
+
+      subclaims.push({
+        id: 'sub-1',
+        subject,
+        predicate: baseStem,
+        attribute: attr1,
+        text: `${baseStem} by ${attr1}.`,
+      });
+      subclaims.push({
+        id: 'sub-2',
+        subject,
+        predicate: baseStem,
+        attribute: attr2,
+        text: `${baseStem} by ${attr2}.`,
+      });
+      return subclaims;
+    }
+
+    // 2. Conjoined independent clauses: "[Clause 1], but [Clause 2]" or "[Clause 1], while [Clause 2]" or "[Clause 1] and [Clause 2]"
+    // e.g. "Asia is the largest continent by land area, but Europe is the largest continent by population."
+    const clauseMatch = clean.match(/^(.+?)(?:,\s*but\s+|,\s*while\s+|;\s*|\s+and\s+(?=[A-Z]))(.+?)[.]?$/i);
+    if (clauseMatch) {
+      const c1 = clauseMatch[1].trim();
+      const c2 = clauseMatch[2].trim();
+      if (c1.length > 8 && c2.length > 8 && /\b(is|are|was|were|has|have|won|lost)\b/i.test(c1) && /\b(is|are|was|were|has|have|won|lost)\b/i.test(c2)) {
+        subclaims.push({
+          id: 'sub-1',
+          subject: c1.replace(/^(the|a|an)\s+/i, '').split(/\s+/).slice(0, 2).join(' '),
+          predicate: c1,
+          text: c1.endsWith('.') ? c1 : `${c1}.`,
+        });
+        subclaims.push({
+          id: 'sub-2',
+          subject: c2.replace(/^(the|a|an)\s+/i, '').split(/\s+/).slice(0, 2).join(' '),
+          predicate: c2,
+          text: c2.endsWith('.') ? c2 : `${c2}.`,
+        });
+        return subclaims;
+      }
+    }
+
+    return subclaims;
   }
 
   /**
@@ -300,11 +361,10 @@ export class EntityExtractorService {
     const holderPrefixMatch = clean.match(/^([a-zA-Z\s]+?)\s+(is|was|has never been)\s+(?:currently\s+|now\s+|the current\s+)?(?:the\s+)?([a-zA-Z0-9'\s-]+?\s+(?:captain|ceo|president|prime minister|chief minister|coach|manager))(?:\s+of\s+([a-zA-Z0-9'\s-]+))?(?:\s+(?:earlier\s+in\s+\d{4}|earlier|previously|formerly|in\s+\d{4}))?[.]?$/i);
     if (holderPrefixMatch) {
       const holderName = holderPrefixMatch[1].trim();
-      const verb = holderPrefixMatch[2].toLowerCase();
       const roleName = holderPrefixMatch[3].trim();
       const entityContext = holderPrefixMatch[4] ? holderPrefixMatch[4].trim() : '';
-      const isNever = verb.includes('never') || lower.includes('never');
-      const isPast = verb === 'was' || lower.includes('earlier') || lower.includes('previously');
+      const isPast = holderPrefixMatch[2].toLowerCase() === 'was' || /\b(earlier|previously|formerly)\b/i.test(clean);
+      const isNever = holderPrefixMatch[2].toLowerCase().includes('never');
 
       return {
         entity: entityContext ? `${entityContext} ${roleName}` : roleName,
@@ -342,10 +402,11 @@ export class EntityExtractorService {
       };
     }
 
-    // 4. Location assertion: e.g. "Ram Mandir is in Pakistan", "India is in South America", "India is not located in Asia"
-    const locMatch = clean.match(/^(.+?)\s+(?:is not located in|is not in|is located in|is in|are located in|are in|is a country in|lies in|situated in)\s+(.+?)[.]?$/i);
+    // 4. Location assertion: e.g. "Ram Mandir is in Pakistan", "India is in South America", "India is a sovereign country located in South Asia"
+    const locMatch = clean.match(/^(.+?)\s+(?:is not located in|is not in|is located in|is in|are located in|are in|is a country in|is a sovereign country located in|lies in|situated in)\s+(.+?)[.]?$/i);
     if (locMatch && locMatch[1] && locMatch[2]) {
       let rawEntity = locMatch[1].trim().replace(/\b(is|are|was|were)?\s*not\b/i, '').trim();
+      rawEntity = rawEntity.replace(/\b(is|are)\s+(?:a\s+)?(?:sovereign\s+)?(?:country|nation|state|territory|island)\b/i, '').trim();
       const rawLoc = locMatch[2].trim().toLowerCase().replace(/[.]+$/, '');
       const entity = /ram mandir|ram temple|ram janmbhoomi/i.test(rawEntity) ? 'Ram Mandir' : rawEntity;
       return {
@@ -386,23 +447,25 @@ export class EntityExtractorService {
     }
 
     // 6. Superlative & Category Ranking (e.g. "The Earth is the largest planet in the Solar System", "Asia is the largest continent in world", "The Pacific Ocean is the smallest ocean")
-    const superMatch = clean.match(/^(?:the\s+)?([a-zA-Z\s]+?)\s+(?:is|are)\s+(?:the\s+)?(largest|biggest|smallest|highest|lowest|tallest|deepest|longest|fastest|coldest|hottest|oldest|youngest|most populous|first|last|most|least)\s+([a-zA-Z0-9'\s-]+?)(?:\s+(?:in|of)\s+(?:the\s+)?([a-zA-Z0-9'\s-]+))?[.]?$/i);
+    const superMatch = clean.match(/^(?:the\s+)?([a-zA-Z\s]+?)\s+(?:is|are)\s+(?:the\s+)?(largest|biggest|smallest|highest|lowest|tallest|deepest|longest|fastest|coldest|hottest|oldest|youngest|most populous|first|last|most|least)\s+([a-zA-Z0-9'\s-]+?)(?:\s+(?:in|of)\s+(?:the\s+)?([a-zA-Z0-9'\s-]+))?(?:\s+by\s+(?:both\s+)?([a-zA-Z0-9'\s-]+))?[.]?$/i);
     if (superMatch) {
       const rawSubject = superMatch[1].trim();
       const subject = rawSubject.replace(/^(the|a|an)\s+/i, '');
       const superType = superMatch[2].trim().toLowerCase();
       const category = superMatch[3].trim().toLowerCase();
       const scope = superMatch[4] ? superMatch[4].trim() : '';
+      const byAttr = superMatch[5] ? superMatch[5].trim() : '';
       const fullCategory = scope ? `${category} in the ${scope}` : category;
 
       return {
         entity: fullCategory,
         attribute: 'superlative',
         holder: subject,
-        claimValue: `${superType} ${fullCategory}`,
+        claimValue: byAttr ? `${superType} ${fullCategory} by ${byAttr}` : `${superType} ${fullCategory}`,
         superlativeType: superType,
         category,
         scope,
+        property: byAttr || undefined,
         isNegated,
       };
     }

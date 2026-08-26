@@ -187,6 +187,82 @@ Return STRICT JSON only:
     const combined = `${evidenceTitle} ${evidenceSnippet}`.toLowerCase();
     const claimLower = claimText.toLowerCase();
 
+    // 0. Compound Claim & Multi-Proposition Evaluation (Requirement 1, 2, 5, 6, 7)
+    const subclaims = entityExtractorService.extractSubclaims(claimText);
+    if (subclaims.length > 1) {
+      const subResults = subclaims.map((sub) => {
+        const res = this.evaluateDeterministic(sub.text, evidenceSnippet, evidenceTitle, false);
+        return {
+          subclaim: sub,
+          result: res,
+        };
+      });
+
+      const supported = subResults.filter((sr) => sr.result.relation === 'supports');
+      const contradicted = subResults.filter((sr) => sr.result.relation === 'contradicts');
+      const unclear = subResults.filter((sr) => sr.result.relation === 'unclear');
+
+      if (supported.length === subResults.length) {
+        return {
+          relation: 'supports',
+          relationToClaim: 'SUPPORTS',
+          relevance: 'direct',
+          confidence: 98,
+          reasoning: `All compound assertions verified: ${subResults.map((s) => `"${s.subclaim.text}" (SUPPORTED)`).join(' and ')}.`,
+          keyEvidence: evidenceSnippet.slice(0, 140),
+          stanceScore: 1,
+          relevanceScore: 1.0,
+          explanation: `All compound propositions verified by authoritative evidence.`,
+          temporalRelevance: 'HISTORICAL',
+        };
+      }
+
+      if (contradicted.length === subResults.length) {
+        return {
+          relation: 'contradicts',
+          relationToClaim: 'CONTRADICTS',
+          relevance: 'direct',
+          confidence: 98,
+          reasoning: `Compound claim contradicted: All atomic propositions are refuted by authoritative records.`,
+          keyEvidence: evidenceSnippet.slice(0, 140),
+          stanceScore: -1,
+          relevanceScore: 1.0,
+          explanation: `Compound claim contradicted: All atomic propositions are refuted.`,
+          temporalRelevance: 'HISTORICAL',
+        };
+      }
+
+      if (contradicted.length > 0) {
+        return {
+          relation: 'contradicts',
+          relationToClaim: 'CONTRADICTS',
+          relevance: 'direct',
+          confidence: 95,
+          reasoning: `Partial contradiction / Mixed propositions: ${supported.map((s) => `"${s.subclaim.text}" (SUPPORTED)`).join(', ')} while ${contradicted.map((c) => `"${c.subclaim.text}" (CONTRADICTED)`).join(', ')}.`,
+          keyEvidence: evidenceSnippet.slice(0, 140),
+          stanceScore: -1,
+          relevanceScore: 1.0,
+          explanation: `Mixed compound claim contains contradicted propositions.`,
+          temporalRelevance: 'HISTORICAL',
+        };
+      }
+
+      if (supported.length > 0 && unclear.length > 0) {
+        return {
+          relation: 'supports',
+          relationToClaim: 'SUPPORTS',
+          relevance: 'direct',
+          confidence: 88,
+          reasoning: `Compound claim partially supported: ${supported.map((s) => `"${s.subclaim.text}" (SUPPORTED)`).join(', ')}.`,
+          keyEvidence: evidenceSnippet.slice(0, 140),
+          stanceScore: 1,
+          relevanceScore: 1.0,
+          explanation: `Compound claim supported by verified propositions.`,
+          temporalRelevance: 'HISTORICAL',
+        };
+      }
+    }
+
     // 1. Explicit Debunk & Fact-Check Contradiction Markers (Strict)
     const contradictMarkers = [
       /\b(fact[- ]check:\s*(false|fake|misleading|untrue)|claim\s+(is|was)\s+(false|fake|fabricated|debunked|untrue)|no evidence\s+(to suggest|that)|debunked:\s*|falsely claimed that|hoax claim)\b/i,
