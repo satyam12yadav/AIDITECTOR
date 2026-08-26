@@ -6,9 +6,16 @@ export interface ExtractedArticle {
   title: string;
   author: string | null;
   publishedAt: string | null;
+  updatedAt: string | null;
+  retrievedAt: string;
   publisher: string | null;
   url: string;
+  canonicalUrl: string | null;
   text: string;
+  isPartial: boolean;
+  extractionStatus: 'COMPLETE' | 'PARTIAL' | 'FAILED';
+  extractionQualityScore: number; // 0 - 100
+  warning?: string;
 }
 
 const FORBIDDEN_HOSTS = [
@@ -22,14 +29,27 @@ const FORBIDDEN_HOSTS = [
 const PRIVATE_IP_REGEX =
   /^(10\.\d{1,3}\.\d{1,3}\.\d{1,3})|(192\.168\.\d{1,3}\.\d{1,3})|(172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3})$/;
 
+const PAYWALL_PATTERNS = [
+  /\b(subscribe to (read|continue|unlock)|exclusive for subscribers|premium members only|you have reached your limit of free articles|sign in to read the full story|already a subscriber\? log in|read the rest of this story with a subscription|register to continue reading)\b/i,
+];
+
+const ERROR_PAGE_PATTERNS = [
+  /\b(404 not found|page not found|access denied|attention required! \| cloudflare|robot check|just a moment\.\.\.|403 forbidden|error 404)\b/i,
+];
+
 export class ExtractorService {
   /**
    * Validates target URL against malformed patterns and SSRF risks
    */
   public validateUrl(rawUrl: string): URL {
+    if (!rawUrl || typeof rawUrl !== 'string' || rawUrl.trim().length === 0) {
+      throw new AppError('No URL provided. Please provide a valid web address.', 400, 'INVALID_URL');
+    }
+
+    const trimmed = rawUrl.trim();
     let parsed: URL;
     try {
-      parsed = new URL(rawUrl);
+      parsed = new URL(trimmed);
     } catch {
       throw new AppError(
         `Invalid URL format: '${rawUrl}'. Please provide a valid HTTP or HTTPS web address.`,
@@ -43,6 +63,15 @@ export class ExtractorService {
         `Unsupported protocol '${parsed.protocol}'. Only HTTP and HTTPS articles are supported.`,
         400,
         'UNSUPPORTED_PROTOCOL'
+      );
+    }
+
+    // Check for direct PDF links
+    if (parsed.pathname.toLowerCase().endsWith('.pdf')) {
+      throw new AppError(
+        'Direct PDF files are currently not supported for HTML article extraction. Please provide an HTML article link.',
+        415,
+        'UNSUPPORTED_MEDIA_TYPE'
       );
     }
 
@@ -70,7 +99,7 @@ export class ExtractorService {
 
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 7000);
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
 
       const response = await fetch(validUrl.toString(), {
         signal: controller.signal,
@@ -89,6 +118,20 @@ export class ExtractorService {
       finalUrl = response.url || validUrl.toString();
 
       if (!response.ok) {
+        if (response.status === 404) {
+          throw new AppError(
+            `Article not found (HTTP 404). The target URL does not exist or has been removed.`,
+            404,
+            'NOT_FOUND'
+          );
+        }
+        if (response.status === 401 || response.status === 403) {
+          throw new AppError(
+            `Access denied (HTTP ${response.status}). The website requires authentication or restricts automated access.`,
+            403,
+            'ACCESS_DENIED'
+          );
+        }
         throw new AppError(
           `Target server returned HTTP ${response.status} (${response.statusText}). Could not reach article content.`,
           response.status >= 500 ? 502 : 400,
@@ -112,9 +155,9 @@ export class ExtractorService {
 
       if (err.name === 'AbortError') {
         throw new AppError(
-          `Connection to '${validUrl.hostname}' timed out after 12 seconds. The host is unreachable.`,
+          `Connection to '${validUrl.hostname}' timed out after 8 seconds. The host is unreachable.`,
           504,
-          'REQUEST_TIMEOUT'
+          'ARTICLE_FETCH_TIMEOUT'
         );
       }
 
@@ -143,23 +186,42 @@ export class ExtractorService {
   public parseHtml(html: string, pageUrl: string): ExtractedArticle {
     const $ = cheerio.load(html);
 
-    // 1. Extract JSON-LD metadata if present
+    // 1. Check for Bot Challenges or Error Pages
+    const rawPageTitle = $('title').first().text().trim();
+    const rawBodySnippet = $('body').text().slice(0, 300);
+
+    for (const errPat of ERROR_PAGE_PATTERNS) {
+      if (errPat.test(rawPageTitle) || errPat.test(rawBodySnippet)) {
+        throw new AppError(
+          `The target URL returned an error page or security challenge: "${rawPageTitle || 'Error Page'}".`,
+          422,
+          'ERROR_PAGE_DETECTED'
+        );
+      }
+    }
+
+    // 2. Extract JSON-LD metadata if present
     const jsonLd = this.extractJsonLd($);
 
-    // 2. Extract Title
-    const title =
-      jsonLd?.headline ||
-      jsonLd?.name ||
-      $('meta[property="og:title"]').attr('content') ||
-      $('meta[name="twitter:title"]').attr('content') ||
-      $('article h1').first().text().trim() ||
-      $('h1').first().text().trim() ||
-      $('title').first().text().trim() ||
+    // 3. Extract Title (Prefer article/main h1, then OpenGraph, then JSON-LD, then title tag)
+    const articleH1 = $('article h1, [itemprop="headline"], .article-headline, .story-headline, .entry-title').first().text().trim();
+    const mainH1 = $('main h1, #content h1, .main-content h1').first().text().trim();
+    const ogTitle = $('meta[property="og:title"]').attr('content')?.trim();
+    const twitterTitle = $('meta[name="twitter:title"]').attr('content')?.trim();
+    const jsonLdTitle = (jsonLd?.headline && jsonLd.headline.length > 5) ? jsonLd.headline : (jsonLd?.name && jsonLd.name.length > 5 && jsonLd.name.length < 120) ? jsonLd.name : null;
+
+    const rawTitle =
+      articleH1 ||
+      mainH1 ||
+      ogTitle ||
+      twitterTitle ||
+      jsonLdTitle ||
+      rawPageTitle ||
       'Untitled Article';
 
-    const cleanedTitle = this.cleanTitle(title, pageUrl);
+    const cleanedTitle = this.cleanTitle(rawTitle, pageUrl);
 
-    // 3. Extract Author
+    // 4. Extract Author
     const author =
       jsonLd?.authorName ||
       $('meta[name="author"]').attr('content') ||
@@ -172,8 +234,8 @@ export class ExtractorService {
 
     const cleanedAuthor = author ? author.replace(/^by\s+/i, '').trim() : null;
 
-    // 4. Extract Publication Date
-    const rawDate =
+    // 5. Extract Publication & Modification Dates
+    const rawPublished =
       jsonLd?.datePublished ||
       $('meta[property="article:published_time"]').attr('content') ||
       $('meta[name="pubdate"]').attr('content') ||
@@ -185,9 +247,18 @@ export class ExtractorService {
       $('time').first().text().trim() ||
       null;
 
-    const formattedDate = this.formatDate(rawDate);
+    const rawModified =
+      jsonLd?.dateModified ||
+      $('meta[property="article:modified_time"]').attr('content') ||
+      $('meta[name="last-modified"]').attr('content') ||
+      $('meta[name="updated_time"]').attr('content') ||
+      null;
 
-    // 5. Extract Publisher
+    const publishedAt = this.formatDate(rawPublished);
+    const updatedAt = this.formatDate(rawModified);
+    const retrievedAt = new Date().toISOString();
+
+    // 6. Extract Publisher
     let parsedHost = '';
     try {
       parsedHost = new URL(pageUrl).hostname.replace(/^www\./, '');
@@ -202,7 +273,7 @@ export class ExtractorService {
       $('meta[name="publisher"]').attr('content') ||
       parsedHost;
 
-    // 6. Extract Canonical URL
+    // 7. Extract Canonical URL
     const canonicalUrl =
       $('link[rel="canonical"]').attr('href') ||
       $('meta[property="og:url"]').attr('content') ||
@@ -215,11 +286,36 @@ export class ExtractorService {
       resolvedCanonical = pageUrl;
     }
 
-    // 7. Extract Main Article Body Text
+    // 8. Check for Homepage / Index page (Non-article)
+    const linkCount = $('a').length;
+    const pCount = $('p').length;
+    const urlObj = new URL(pageUrl);
+    const isRootPath = urlObj.pathname === '' || urlObj.pathname === '/' || urlObj.pathname === '/index.html';
+    const isHomeTitle = /\b(latest news|breaking news|top headlines|trending news|home|index|frontpage)\b/i.test(cleanedTitle);
+
+    if (isRootPath && (isHomeTitle || (linkCount > 15 && pCount < 4))) {
+      throw new AppError(
+        'The provided URL appears to be a homepage or index directory rather than a specific news article.',
+        422,
+        'HOMEPAGE_NOT_SUPPORTED'
+      );
+    }
+
+    // 9. Extract Main Article Body Text
     const text = this.extractBodyText($);
 
-    // 8. Validate Content Boundaries
-    if (!text || text.length < 80) {
+    // 10. Check Paywall & Content Quality
+    let isPartial = false;
+    let warning: string | undefined;
+
+    const hasPaywallMarker = PAYWALL_PATTERNS.some((pat) => pat.test(text) || pat.test(html));
+    if (hasPaywallMarker && text.length < 1000) {
+      isPartial = true;
+      warning = 'Only part of this article was accessible. Verification may be incomplete.';
+    }
+
+    // 11. Validate Content Boundaries
+    if (!text || text.length < 100) {
       throw new AppError(
         'The page does not contain sufficient extractable article content (possible paywall, login gate, or dynamic client-side rendering).',
         422,
@@ -230,6 +326,16 @@ export class ExtractorService {
         }
       );
     }
+
+    // Calculate internal extraction quality score (0 - 100)
+    let extractionQualityScore = 50;
+    if (cleanedTitle && cleanedTitle !== 'Untitled Article') extractionQualityScore += 20;
+    if (cleanedAuthor) extractionQualityScore += 10;
+    if (publishedAt) extractionQualityScore += 10;
+    if (text.length >= 600) extractionQualityScore += 10;
+    if (isPartial) extractionQualityScore = Math.min(65, extractionQualityScore);
+
+    const extractionStatus: 'COMPLETE' | 'PARTIAL' | 'FAILED' = isPartial ? 'PARTIAL' : 'COMPLETE';
 
     // Cap maximum length safely at 50,000 characters
     let processedText = text;
@@ -242,10 +348,17 @@ export class ExtractorService {
     return {
       title: decode(cleanedTitle),
       author: cleanedAuthor ? decode(cleanedAuthor) : null,
-      publishedAt: formattedDate,
+      publishedAt,
+      updatedAt,
+      retrievedAt,
       publisher: decode(publisher),
       url: resolvedCanonical,
+      canonicalUrl: resolvedCanonical,
       text: decode(processedText),
+      isPartial,
+      extractionStatus,
+      extractionQualityScore,
+      warning,
     };
   }
 
@@ -257,6 +370,7 @@ export class ExtractorService {
     name?: string;
     authorName?: string;
     datePublished?: string;
+    dateModified?: string;
     publisherName?: string;
   } | null {
     try {
@@ -306,7 +420,8 @@ export class ExtractorService {
               headline: item.headline,
               name: item.name,
               authorName,
-              datePublished: item.datePublished || item.dateCreated || item.dateModified,
+              datePublished: item.datePublished || item.dateCreated,
+              dateModified: item.dateModified,
               publisherName,
             };
           }
@@ -323,7 +438,6 @@ export class ExtractorService {
    */
   private cleanTitle(rawTitle: string, url: string): string {
     let title = rawTitle.trim();
-    // Remove common site suffix separators ( | , - , – , — , » , • )
     const splitIndex = title.search(/\s+[|\-–—»•]\s+/);
     if (splitIndex > 15) {
       title = title.substring(0, splitIndex).trim();
@@ -354,9 +468,10 @@ export class ExtractorService {
     // 1. Remove unwanted noisy elements from the clone DOM
     $(
       'script, style, noscript, iframe, svg, nav, header, footer, aside, ' +
-        '.nav, .navbar, .menu, .sidebar, .footer, .advertisement, .ad, .ads, ' +
-        '.banner, .cookie-notice, .cookie-banner, .social-share, .share-buttons, ' +
-        '.comments, #comments, .related-posts, .recommended-articles, form, button, dialog'
+        '.nav, .navbar, .menu, .sidebar, .footer, .advertisement, .ad, .ads, .ad-container, .ad-banner, ' +
+        '.banner, .cookie-notice, .cookie-banner, .consent-banner, .social-share, .share-buttons, ' +
+        '.comments, #comments, .related-posts, .related-articles, .recommended-articles, .more-stories, ' +
+        '.newsletter-signup, .newsletter, form, button, dialog, [class*="cookie"], [class*="consent"]'
     ).remove();
 
     // 2. Target priority semantic containers

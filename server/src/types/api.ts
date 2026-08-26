@@ -7,9 +7,16 @@ export interface ArticleMetadata {
   title: string;
   author: string | null;
   publishedAt: string | null;
+  updatedAt?: string | null;
+  retrievedAt?: string;
   publisher: string | null;
   url: string | null;
+  canonicalUrl?: string | null;
   text: string;
+  isPartial?: boolean;
+  extractionStatus?: 'COMPLETE' | 'PARTIAL' | 'FAILED';
+  extractionQualityScore?: number;
+  warning?: string;
 }
 
 export interface ExtractedEntities {

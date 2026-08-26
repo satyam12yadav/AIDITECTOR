@@ -56,20 +56,47 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({
             Analysis Report: {result.id}
           </h2>
 
-          <div className="flex flex-wrap items-center gap-2 md:gap-4 mt-3">
-            <span className="font-label-code text-xs text-on-surface-variant bg-surface-container py-1 px-2.5 rounded border border-outline-variant">
-              GENERATED: {result.analyzedAt}
-            </span>
+          <div className="flex flex-wrap items-center gap-2 md:gap-3 mt-3">
             {result.sourceUrl && (
-              <span className="font-label-code text-xs text-on-surface-variant bg-surface-container py-1 px-2.5 rounded border border-outline-variant flex items-center max-w-xs md:max-w-md truncate">
-                <span className="material-symbols-outlined text-[14px] mr-1">link</span>
-                {result.sourceUrl}
+              <span
+                className={`font-label-caps text-xs font-bold py-1 px-2.5 rounded border flex items-center gap-1 ${
+                  result.isPartial
+                    ? 'bg-[#fffbeb] text-[#92400e] border-[#fde68a]'
+                    : 'bg-[#ecfdf5] text-[#065f46] border-[#a7f3d0]'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[14px]">
+                  {result.isPartial ? 'warning' : 'check_circle'}
+                </span>
+                {result.isPartial ? 'ARTICLE PARTIALLY EXTRACTED ⚠' : 'ARTICLE EXTRACTED ✓'}
               </span>
             )}
+
+            {result.publisher && (
+              <span className="font-label-code text-xs text-on-surface-variant bg-surface-container py-1 px-2.5 rounded border border-outline-variant flex items-center gap-1">
+                <span className="material-symbols-outlined text-[14px] text-outline">newspaper</span>
+                {result.publisher}
+              </span>
+            )}
+
+            {result.publishedAt && (
+              <span className="font-label-code text-xs text-on-surface-variant bg-surface-container py-1 px-2.5 rounded border border-outline-variant flex items-center gap-1">
+                <span className="material-symbols-outlined text-[14px] text-outline">calendar_today</span>
+                Published: {result.publishedAt}
+              </span>
+            )}
+
             <span className="font-label-code text-xs text-on-surface-variant bg-surface-container py-1 px-2.5 rounded border border-outline-variant">
-              CLAIMS EXTRACTED: {result.totalClaimsIdentified}
+              CLAIMS: {result.totalClaimsIdentified}
             </span>
           </div>
+
+          {result.extractionWarning && (
+            <div className="mt-3 bg-[#fffbeb] border border-[#fde68a] text-[#92400e] px-3.5 py-2 rounded text-xs font-body-sm flex items-center gap-2">
+              <span className="material-symbols-outlined text-[16px] shrink-0">info</span>
+              <span>{result.extractionWarning}</span>
+            </div>
+          )}
         </div>
 
         {/* Top Actions */}

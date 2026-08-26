@@ -28,9 +28,16 @@ export const analyzeArticle = async (
         title: extracted.title,
         author: extracted.author,
         publishedAt: extracted.publishedAt,
+        updatedAt: extracted.updatedAt,
+        retrievedAt: extracted.retrievedAt,
         publisher: extracted.publisher,
         url: extracted.url,
+        canonicalUrl: extracted.canonicalUrl,
         text: extracted.text,
+        isPartial: extracted.isPartial,
+        extractionStatus: extracted.extractionStatus,
+        extractionQualityScore: extracted.extractionQualityScore,
+        warning: extracted.warning,
       };
     } else if (text && text.trim().length > 0) {
       const trimmedText = text.trim();

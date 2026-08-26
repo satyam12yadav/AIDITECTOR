@@ -190,6 +190,12 @@ export const transformBackendResponseToUi = (
     summary: backendData.summary,
     limitations: backendData.limitations || [],
     executiveSummary: defaultSummary,
+    publishedAt: backendData.article?.publishedAt || null,
+    updatedAt: backendData.article?.updatedAt || null,
+    retrievedAt: backendData.article?.retrievedAt || analyzedDate,
+    extractionStatus: backendData.article?.extractionStatus || 'COMPLETE',
+    isPartial: backendData.article?.isPartial || false,
+    extractionWarning: backendData.article?.warning,
     diagnostics: {
       evidenceSupport: backendData.breakdown?.evidenceSupport ?? (backendData.score || 50),
       sourceReliability: backendData.breakdown?.sourceReliability ?? 50,

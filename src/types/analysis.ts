@@ -93,6 +93,12 @@ export interface AnalysisResult {
   totalClaimsIdentified: number;
   wordCount?: number;
   articleSummary?: MultiClaimArticleSummary;
+  publishedAt?: string | null;
+  updatedAt?: string | null;
+  retrievedAt?: string;
+  extractionStatus?: 'COMPLETE' | 'PARTIAL' | 'FAILED';
+  isPartial?: boolean;
+  extractionWarning?: string;
 }
 
 export type AnalysisInputMode = 'url' | 'text';

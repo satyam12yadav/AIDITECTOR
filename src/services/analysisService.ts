@@ -5,8 +5,15 @@ export interface BackendArticleMetadata {
   url: string | null;
   author: string | null;
   publishedAt: string | null;
+  updatedAt?: string | null;
+  retrievedAt?: string;
   publisher?: string | null;
+  canonicalUrl?: string | null;
   text?: string;
+  isPartial?: boolean;
+  extractionStatus?: 'COMPLETE' | 'PARTIAL' | 'FAILED';
+  extractionQualityScore?: number;
+  warning?: string;
 }
 
 export interface BackendScoreBreakdown {
