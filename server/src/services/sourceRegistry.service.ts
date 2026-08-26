@@ -21,6 +21,7 @@ export interface SourceEvaluation {
   category: string;
   credibilityTier: 1 | 2 | 3 | 4 | 5;
   credibilityWeight: number;
+  reliabilityScore: number; // 20 - 100
   badge: string;
   isRegistered: boolean;
 }
@@ -54,7 +55,11 @@ export class SourceRegistryService {
         const parsed = JSON.parse(raw);
 
         this.sources = parsed.map((item: any) => {
-          const tier: 1 | 2 | 3 | 4 | 5 = item.credibilityTier || (item.isFactChecker ? 2 : item.isWireService ? 3 : 4);
+          const isGov = item.domain && (item.domain.endsWith('.gov') || item.domain.endsWith('.gov.in') || item.domain.endsWith('.nic.in'));
+          let tier: 1 | 2 | 3 | 4 | 5 = item.credibilityTier || 4;
+          if (item.isOfficial || isGov) tier = 1;
+          else if (item.isFactChecker) tier = 3;
+          else if (item.isWireService) tier = 2;
           const tierDef = SOURCE_TIER_CONFIG[tier] || SOURCE_TIER_CONFIG[5];
 
           return {
@@ -105,7 +110,7 @@ export class SourceRegistryService {
   }
 
   /**
-   * Matches a URL or publisher name against the normalized 54-source registry
+   * Matches a URL or publisher name against the normalized source registry
    */
   public matchSource(urlOrDomain: string): NormalizedSourceRecord | null {
     const norm = this.normalizeDomain(urlOrDomain);
@@ -135,94 +140,141 @@ export class SourceRegistryService {
   }
 
   /**
-   * Evaluates source credibility tier and weight
+   * Evaluates source credibility tier and reliability score (20 - 100)
    */
   public getSourceCredibility(urlOrDomain: string): SourceEvaluation {
     const match = this.matchSource(urlOrDomain);
     if (match) {
       const tierDef = SOURCE_TIER_CONFIG[match.credibilityTier];
+      const relScore = Math.round(match.credibilityWeight * 100);
       return {
         name: match.name,
         domain: match.domain,
         category: match.category,
         credibilityTier: match.credibilityTier,
         credibilityWeight: match.credibilityWeight,
+        reliabilityScore: Math.max(tierDef.reliabilityRange[0], Math.min(tierDef.reliabilityRange[1], relScore)),
         badge: tierDef.badge,
         isRegistered: true,
       };
     }
 
-    // Check generic institutional domains for Tier 1
     const norm = this.normalizeDomain(urlOrDomain);
+
+    // Tier 1 — Official / Primary Authorities & Statutory Bodies
     if (
       norm.endsWith('.gov') ||
       norm.endsWith('.gov.in') ||
       norm.endsWith('.nic.in') ||
+      norm.endsWith('.mil') ||
+      norm.endsWith('.edu') ||
+      norm.endsWith('.ac.in') ||
+      norm.includes('bcci.tv') ||
+      norm.includes('icc-cricket.com') ||
+      norm.includes('rbi.org.in') ||
+      norm.includes('eci.gov.in') ||
+      norm.includes('isro.gov.in') ||
       norm.includes('who.int') ||
       norm.includes('un.org') ||
-      norm.includes('rbi.org') ||
       norm.includes('nasa.gov') ||
       norm.includes('nih.gov') ||
-      norm.includes('cdc.gov')
+      norm.includes('cdc.gov') ||
+      norm.includes('supremecourt')
     ) {
       return {
-        name: norm,
+        name: norm.includes('bcci') ? 'BCCI' : norm.includes('icc') ? 'ICC' : norm.includes('rbi') ? 'Reserve Bank of India' : norm,
         domain: norm,
-        category: 'Official Government / Institutional Portal',
+        category: 'Official Government / Institutional Authority',
         credibilityTier: 1,
         credibilityWeight: SOURCE_TIER_CONFIG[1].baseWeight,
+        reliabilityScore: 98,
         badge: SOURCE_TIER_CONFIG[1].badge,
         isRegistered: true,
       };
     }
 
-    // Check academic and peer-reviewed scientific authorities for Tier 2
+    // Tier 3 — Recognized IFCN Fact-Checking Organizations
     if (
-      norm.endsWith('.edu') ||
-      norm.endsWith('.ac.in') ||
-      norm.endsWith('.ac.uk') ||
-      norm.includes('nature.com') ||
-      norm.includes('thelancet.com') ||
-      norm.includes('sciencemag.org')
+      norm.includes('boomlive') ||
+      norm.includes('altnews') ||
+      norm.includes('snopes') ||
+      norm.includes('factly') ||
+      norm.includes('vishvasnews') ||
+      norm.includes('newschecker') ||
+      norm.includes('factcheck')
     ) {
       return {
         name: norm,
         domain: norm,
-        category: 'Academic & Peer-Reviewed Scientific Authority',
+        category: 'Recognized Fact-Checking Organization',
+        credibilityTier: 3,
+        credibilityWeight: SOURCE_TIER_CONFIG[3].baseWeight,
+        reliabilityScore: 88,
+        badge: SOURCE_TIER_CONFIG[3].badge,
+        isRegistered: true,
+      };
+    }
+
+    // Tier 2 — Highly Reliable Independent News & Wire Services
+    if (
+      norm.includes('reuters.com') ||
+      norm.includes('apnews.com') ||
+      norm.includes('afp.com') ||
+      norm.includes('ptinews.com') ||
+      norm.includes('thehindu.com') ||
+      norm.includes('indianexpress.com') ||
+      norm.includes('bbc.com') ||
+      norm.includes('nytimes.com') ||
+      norm.includes('wsj.com') ||
+      norm.includes('theguardian.com') ||
+      norm.includes('bloomberg.com') ||
+      norm.includes('espncricinfo.com')
+    ) {
+      return {
+        name: norm,
+        domain: norm,
+        category: 'Highly Reliable Independent News & Wire Service',
         credibilityTier: 2,
         credibilityWeight: SOURCE_TIER_CONFIG[2].baseWeight,
+        reliabilityScore: 90,
         badge: SOURCE_TIER_CONFIG[2].badge,
         isRegistered: true,
       };
     }
 
-    // Check encyclopedic reference and curated knowledge archives for Tier 4
+    // Tier 4 — General Publishers & Reference Archives
     if (
       norm === 'wikipedia.org' ||
       norm.endsWith('.wikipedia.org') ||
       norm === 'wikipedia' ||
       norm === 'britannica.com' ||
       norm.endsWith('.britannica.com') ||
-      norm === 'nationalgeographic.com'
+      norm === 'nationalgeographic.com' ||
+      norm.includes('scroll.in') ||
+      norm.includes('thewire.in') ||
+      norm.includes('livemint.com') ||
+      norm.includes('moneycontrol.com')
     ) {
       return {
-        name: norm.includes('britannica') ? 'Encyclopædia Britannica' : norm.includes('wikipedia') ? 'Wikipedia Knowledge Archive' : 'National Geographic',
+        name: norm.includes('britannica') ? 'Encyclopædia Britannica' : norm.includes('wikipedia') ? 'Wikipedia Knowledge Archive' : norm.includes('nationalgeographic') ? 'National Geographic' : norm,
         domain: norm,
-        category: 'Verified Encyclopedic Reference',
+        category: 'General Publisher / Reference Repository',
         credibilityTier: 4,
-        credibilityWeight: 0.82,
-        badge: 'Tier 4: Verified Reference Archive',
+        credibilityWeight: SOURCE_TIER_CONFIG[4].baseWeight,
+        reliabilityScore: 72,
+        badge: SOURCE_TIER_CONFIG[4].badge,
         isRegistered: true,
       };
     }
 
-    // Tier 5: Default Unregistered Web Source
+    // Tier 5 — Unknown / Low Trust Source
     return {
       name: norm || 'Unverified Domain',
       domain: norm,
-      category: 'Unverified External Domain',
+      category: 'Unknown / Low Trust Web Source',
       credibilityTier: 5,
       credibilityWeight: SOURCE_TIER_CONFIG[5].baseWeight,
+      reliabilityScore: 35,
       badge: SOURCE_TIER_CONFIG[5].badge,
       isRegistered: false,
     };

@@ -221,7 +221,7 @@ export class CredibilityScorerService {
 
       for (const ev of matchingEv) {
         const tier = ev.sourceTier || 3;
-        const score = ev.credibilityScore || 50;
+        const score = ev.sourceReliability || ev.credibilityScore || 50;
         if (score > maxSourceScore) {
           maxSourceScore = score;
           strongestSource = ev.sourceName || ev.publisher;
@@ -240,28 +240,49 @@ export class CredibilityScorerService {
       const importance = typeof claim.importance === 'number' ? claim.importance : 0.5;
       const normalizedImp = importance > 1 ? importance / 100 : importance;
 
-      // 1. Contradiction Priority & Conflict Handling (Requirements 6 & 10)
-      if (conDomains.size > 0 && supDomains.size > 0) {
-        // Conflicting sources detected
-        claim.consensusStatus = 'CONFLICTING_EVIDENCE';
-        const hasFactCheckRefutation = matchingEv.some(
-          (e) => (e.sourceTier <= 2 || e.sourceType === 'fact_check') && (e.relation === 'contradicts' || e.relationToClaim === 'CONTRADICTS')
-        );
+      const minConTier = contradictingItems.length > 0 ? Math.min(...contradictingItems.map((e) => e.sourceTier || 5)) : 99;
+      const minSupTier = supportingItems.length > 0 ? Math.min(...supportingItems.map((e) => e.sourceTier || 5)) : 99;
 
-        if (hasFactCheckRefutation) {
+      // 1. Conflict Resolution (When both supporting and contradicting sources exist)
+      if (conDomains.size > 0 && supDomains.size > 0) {
+        // Check for temporal succession / freshness dominance (e.g. newer authoritative report contradicts older report)
+        const conHasCurrent = contradictingItems.some((e) => e.freshness === 'CURRENT' || e.temporalRelevance === 'TEMPORALLY_RELEVANT');
+        const supIsOld = supportingItems.every((e) => e.freshness === 'OLD' || e.freshness === 'UNKNOWN');
+        const newerContradictionDominates = conHasCurrent && supIsOld;
+
+        // Check for Tier Authority dominance
+        const conTierDominates = minConTier < minSupTier;
+        const supTierDominates = minSupTier < minConTier;
+
+        if (newerContradictionDominates || conTierDominates) {
+          // Authoritative / Newer Contradiction Dominates
+          claim.consensusStatus = 'UNANIMOUS_CONTRADICTION';
           claim.relation = 'contradicts';
           claim.claimScore = normalizedImp >= 0.65 ? 5 : 15;
-          claim.confidence = 90;
+          claim.confidence = 92;
           claim.reasoning =
             contradictingItems[0]?.explanation ||
-            `Fact-checkers refute this assertion despite conflicting reports.`;
+            `Authoritative reporting refutes this assertion, superseding outdated or lower-tier claims.`;
+        } else if (supTierDominates) {
+          // Authoritative Support Dominates
+          claim.consensusStatus = 'UNANIMOUS_SUPPORT';
+          claim.relation = 'supports';
+          claim.claimScore = Math.min(95, maxSourceScore);
+          claim.confidence = 90;
+          claim.reasoning =
+            supportingItems[0]?.explanation ||
+            `Primary authoritative sources corroborate this assertion over unverified claims.`;
         } else {
-          claim.relation = 'contradicts';
-          claim.claimScore = 20;
-          claim.confidence = 65; // Reduced confidence for genuine conflict
-          claim.reasoning = `Reliable sources disagree or provide conflicting information regarding this assertion.`;
+          // Equal-Tier Genuine Disagreement (Requirement 8)
+          claim.consensusStatus = 'CONFLICTING_EVIDENCE';
+          claim.relation = 'unclear';
+          claim.claimScore = 48; // Neutral unverified
+          claim.confidence = 50; // Moderate/reduced confidence
+          claim.reasoning = `Reliable sources disagree on this claim.`;
         }
-      } else if (contradictingItems.length > 0) {
+      }
+      // 2. Unanimous / Direct Contradiction
+      else if (contradictingItems.length > 0) {
         claim.consensusStatus = 'UNANIMOUS_CONTRADICTION';
         claim.relation = 'contradicts';
         if (normalizedImp >= 0.65) {
@@ -274,19 +295,29 @@ export class CredibilityScorerService {
           contradictingItems[0]?.explanation ||
           `Assertion is directly contradicted by ${strongestSource !== 'None' ? strongestSource : 'authoritative records'}.`;
       }
-      // 2. Direct Support
+      // 3. Direct Support (with Source Tier Validation)
       else if (supportingItems.length > 0) {
-        claim.consensusStatus = 'UNANIMOUS_SUPPORT';
-        claim.relation = 'supports';
-        const baseScore = Math.max(85, maxSourceScore);
-        const diversityBonus = supDomains.size >= 2 ? 5 : 0;
-        claim.claimScore = Math.min(98, baseScore + diversityBonus);
-        claim.confidence = Math.min(98, Math.max(80, supportingItems[0]?.confidence || 90));
-        claim.reasoning =
-          supportingItems[0]?.explanation ||
-          `Assertion is corroborated by ${strongestSource !== 'None' ? strongestSource : 'independent reporting'}.`;
+        // If ONLY Tier 5 unknown blogs support, flag as unverified / lower confidence (Requirement 11 Test B)
+        if (minSupTier === 5) {
+          claim.consensusStatus = 'INSUFFICIENT_EVIDENCE';
+          claim.relation = 'unclear';
+          claim.claimScore = 52;
+          claim.confidence = 45;
+          claim.reasoning = `Only unverified or low-trust sources support this claim; authoritative independent verification is unavailable.`;
+        } else {
+          claim.consensusStatus = 'UNANIMOUS_SUPPORT';
+          claim.relation = 'supports';
+          const isOfficial = minSupTier === 1;
+          const baseScore = isOfficial ? 95 : Math.max(85, maxSourceScore);
+          const diversityBonus = supDomains.size >= 2 ? 3 : 0;
+          claim.claimScore = Math.min(98, baseScore + diversityBonus);
+          claim.confidence = isOfficial && supDomains.size >= 2 ? 98 : Math.min(95, Math.max(80, supportingItems[0]?.confidence || 90));
+          claim.reasoning =
+            supportingItems[0]?.explanation ||
+            `Assertion is corroborated by ${strongestSource !== 'None' ? strongestSource : 'independent reporting'}.`;
+        }
       }
-      // 3. Unclear / Neutral (Requirement 7): Lack of evidence is NEVER false
+      // 4. Insufficient / No Evidence Found
       else {
         claim.consensusStatus = 'INSUFFICIENT_EVIDENCE';
         claim.relation = 'unclear';

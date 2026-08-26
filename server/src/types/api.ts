@@ -96,8 +96,10 @@ export interface RetrievedEvidenceItem {
   sourceName: string;
   sourceUrl: string;
   sourceTier: 1 | 2 | 3 | 4 | 5;
+  sourceReliability: number; // 20 - 100
   title: string;
   publishedDate: string | null;
+  publicationDate?: string | null;
   evidenceText: string;
   relationToClaim: RelationToClaim;
   relevance: EvidenceRelevance;
@@ -108,10 +110,14 @@ export interface RetrievedEvidenceItem {
   explanation: string;
   finalContribution: number; // 0 - 100
 
-  // Step 9 Enhancements
-  domain?: string;
+  // Step 9 & 11 Enhancements
+  domain: string;
   freshness?: FreshnessCategory;
+  temporalRelevance?: 'TEMPORALLY_RELEVANT' | 'HISTORICAL' | 'OBSOLETE' | 'UNKNOWN';
   relevanceClassification?: RelevanceClassification;
+  stance: EvidenceRelation;
+  isSyndicated?: boolean;
+  primarySourceDomain?: string;
 
   // Backward-compatible fields
   url: string;
@@ -119,6 +125,10 @@ export interface RetrievedEvidenceItem {
   sourceType: SourceType;
   snippet: string;
   relation: EvidenceRelation;
+  evidenceSnippet?: string;
+  evidenceTitle?: string;
+  stanceScore?: number;
+  reasoning?: string;
 }
 
 export type CredibilityVerdict =

@@ -3,48 +3,54 @@ export interface SourceTierDefinition {
   label: string;
   badge: string;
   baseWeight: number; // 0.0 to 1.0 (equivalent to 0 - 100 points)
+  reliabilityRange: [number, number]; // [min, max]
   description: string;
 }
 
 export const SOURCE_TIER_CONFIG: Record<1 | 2 | 3 | 4 | 5, SourceTierDefinition> = {
   1: {
     tier: 1,
-    label: 'Official Government / Institutional Authority',
+    label: 'Official / Primary Authority',
     badge: 'Tier 1: Official Authority',
     baseWeight: 0.98,
+    reliabilityRange: [90, 100],
     description:
-      'Official statutory bodies, central banks, supreme courts, election commissions, and verified state fact-checking units (e.g., PIB Fact Check, RBI, WHO, UN).',
+      'Official government portals, statutory bodies, sports boards (BCCI, ICC), central banks (RBI), election commissions, and verified institutional authorities.',
   },
   2: {
     tier: 2,
-    label: 'Established Fact-Checking Organization',
-    badge: 'Tier 2: IFCN Fact-Checker',
-    baseWeight: 0.92,
+    label: 'Highly Reliable Independent News & Wire Services',
+    badge: 'Tier 2: Primary News / Wire Service',
+    baseWeight: 0.90,
+    reliabilityRange: [80, 95],
     description:
-      'IFCN-certified and independent forensic fact-checking organizations (e.g., BOOM Live, Alt News, Vishvas News, Factly, Newschecker, India Today Fact Check).',
+      'Primary international wire services and high-credibility national broadsheets (Reuters, AP, AFP, PTI, The Hindu, The Indian Express, BBC, NYT).',
   },
   3: {
     tier: 3,
-    label: 'Major Wire Service / National Legacy Broadsheet',
-    badge: 'Tier 3: Major News Organization',
-    baseWeight: 0.85,
+    label: 'Recognized Fact-Checking Organization',
+    badge: 'Tier 3: Verified Fact-Checker',
+    baseWeight: 0.88,
+    reliabilityRange: [75, 95],
     description:
-      'Primary wire services and established high-circulation broadsheets (e.g., Reuters, AP, PTI, ANI, The Hindu, The Indian Express, Hindustan Times, NDTV).',
+      'IFCN-signatory forensic fact-checking organizations (BOOM Live, Alt News, PIB Fact Check, Snopes, AFP Fact Check, Factly, Newschecker).',
   },
   4: {
     tier: 4,
-    label: 'Established Media & Analytical Publications',
-    badge: 'Tier 4: Regional / Analytical Media',
-    baseWeight: 0.78,
+    label: 'General Publishers & Reference Repositories',
+    badge: 'Tier 4: General Publisher',
+    baseWeight: 0.70,
+    reliabilityRange: [50, 80],
     description:
-      'Regional broadsheets, financial media, independent digital platforms, and analytical magazines (e.g., LiveMint, Deccan Herald, Dainik Bhaskar, Scroll.in, The Wire, Caravan).',
+      'General digital publishers, regional portals, encyclopedias, and established knowledge archives (Encyclopædia Britannica, National Geographic, Wikipedia).',
   },
   5: {
     tier: 5,
-    label: 'Unverified Web / Low-Authority Source',
-    badge: 'Tier 5: Unverified Web Source',
-    baseWeight: 0.50,
+    label: 'Unknown / Low Trust Sources',
+    badge: 'Tier 5: Unknown / Low Trust',
+    baseWeight: 0.35,
+    reliabilityRange: [20, 50],
     description:
-      'Unclassified blogs, social media posts, unregistered websites, and personal opinion forums.',
+      'Unclassified blogs, scraped websites, unattributed pages, social feeds, and low-quality content aggregators.',
   },
 };
