@@ -1,5 +1,6 @@
 import { RelationToClaim, EvidenceRelation, EvidenceRelevance } from '../types/api.js';
 import { entityExtractorService, ClaimTriple } from './entityExtractor.service.js';
+import { semanticContradictionEngine } from './semanticContradictionEngine.service.js';
 
 export interface StanceEvaluationItem {
   relation: EvidenceRelation; // "supports" | "contradicts" | "unclear"
@@ -92,17 +93,21 @@ ${isTimeSensitive ? 'NOTE: This claim is TIME-SENSITIVE regarding CURRENT status
 EVIDENCE TITLE: "${evidenceTitle}"
 EVIDENCE TEXT: "${evidenceSnippet}"
 
-STRICT CLAIM-VERIFICATION RULES:
+STRICT NATURAL LANGUAGE INFERENCE (NLI) & CLAIM-VERIFICATION RULES:
 1. "relation":
-   - "supports" (+1): The evidence explicitly establishes the same factual proposition as the claim.
-   - "contradicts" (-1): The evidence explicitly establishes a CONFLICTING factual proposition for the same entity/attribute/role.
-     CRITICAL: If the claim asserts person/entity X is CURRENTLY in a role (e.g. captain, CEO, owner), but evidence states person/entity Y REPLACED X (e.g. "Shreyas Iyer named new captain replacing Suryakumar Yadav" or "Jane replaced John as CEO" or "Z acquired Y"), this is a DIRECT CONTRADICTION (-1), NOT support!
-   - "unclear" (0): The evidence is related to the topic or mentions the entity, but does not establish or contradict the claim.
+   - "supports" (+1): The evidence entails or explicitly corroborates the same factual proposition as the claim.
+   - "contradicts" (-1): The evidence establishes a CONFLICTING factual proposition for the same entity/attribute/topic.
+     CRITICAL: DO NOT require the evidence to literally contain words like "false", "fake", or "not".
+     - e.g. Claim: "The Moon is made of cheese" vs Evidence: "Lunar samples consist of basalt and silicate rock" -> CONTRADICTS (-1).
+     - e.g. Claim: "Earth is flat" vs Evidence: "Earth is an oblate spheroid" or "Earth isn't flat" -> CONTRADICTS (-1).
+     - e.g. Claim: "Paris is the capital of Germany" vs Evidence: "Berlin is the capital of Germany" -> CONTRADICTS (-1).
+     - e.g. Claim: "X is current captain" vs Evidence: "Y replaced X as captain" -> CONTRADICTS (-1).
+   - "unclear" (0): ONLY use "unclear" when the evidence genuinely CANNOT establish either support or contradiction (e.g. general background that does not evaluate the proposition).
 
 2. "relevance":
-   - "direct": The evidence directly addresses the specific attribute (e.g. role holder, location, number, date, transition) of the entity in the claim.
+   - "direct": The evidence directly addresses the specific attribute/proposition of the entity in the claim.
    - "related": The evidence mentions the entity or general topic, but does not answer the specific assertion.
-   - "irrelevant": The evidence is off-topic.
+   - "irrelevant": The evidence is off-topic (e.g. sports article for a geography claim).
 
 3. "keyEvidence": Extract the exact verbatim fact/phrase from the evidence that answers the claim.
 
@@ -263,7 +268,175 @@ Return STRICT JSON only:
       }
     }
 
-    // 1. Explicit Debunk & Fact-Check Contradiction Markers (Strict)
+    // 0. Generalized Semantic Contradiction & Proposition Matching (Phase 3B)
+    const semanticRes = semanticContradictionEngine.evaluateSemanticContradiction(
+      claimText,
+      evidenceSnippet,
+      evidenceTitle
+    );
+
+    if (semanticRes.stance === 'CONTRADICTS') {
+      return {
+        relation: 'contradicts',
+        relationToClaim: 'CONTRADICTS',
+        relevance: 'direct',
+        confidence: Math.round(semanticRes.confidence * 100),
+        reasoning: semanticRes.reason,
+        keyEvidence: evidenceSnippet.slice(0, 140) || evidenceTitle,
+        stanceScore: -1,
+        relevanceScore: 1.0,
+        explanation: semanticRes.reason,
+        temporalRelevance: isTimeSensitive ? 'TEMPORALLY_RELEVANT' : 'HISTORICAL',
+      };
+    }
+
+    if (semanticRes.stance === 'SUPPORTS') {
+      return {
+        relation: 'supports',
+        relationToClaim: 'SUPPORTS',
+        relevance: 'direct',
+        confidence: Math.round(semanticRes.confidence * 100),
+        reasoning: semanticRes.reason,
+        keyEvidence: evidenceSnippet.slice(0, 140) || evidenceTitle,
+        stanceScore: 1,
+        relevanceScore: 1.0,
+        explanation: semanticRes.reason,
+        temporalRelevance: isTimeSensitive ? 'TEMPORALLY_RELEVANT' : 'HISTORICAL',
+      };
+    }
+
+    if (semanticRes.stance === 'IRRELEVANT') {
+      return {
+        relation: 'unclear',
+        relationToClaim: 'INSUFFICIENT',
+        relevance: 'irrelevant',
+        confidence: Math.round(semanticRes.confidence * 100),
+        reasoning: semanticRes.reason,
+        keyEvidence: evidenceSnippet.slice(0, 140) || evidenceTitle,
+        stanceScore: 0,
+        relevanceScore: 0.1,
+        explanation: semanticRes.reason,
+        temporalRelevance: 'HISTORICAL',
+      };
+    }
+
+    if (semanticRes.stance === 'INSUFFICIENT' && semanticRes.isBeliefDiscussion) {
+      return {
+        relation: 'unclear',
+        relationToClaim: 'INSUFFICIENT',
+        relevance: 'related',
+        confidence: 85,
+        reasoning: semanticRes.reason,
+        keyEvidence: evidenceSnippet.slice(0, 140) || evidenceTitle,
+        stanceScore: 0,
+        relevanceScore: 0.3,
+        explanation: semanticRes.reason,
+        temporalRelevance: 'HISTORICAL',
+      };
+    }
+
+    // 1. Entity-Attribute-Value (EAV) Triple Resolution & Relevance Gate
+    const claimTriple = entityExtractorService.extractClaimTriple(claimText);
+
+    // If claim is role_holder (e.g. captaincy, prime minister, president), verify that evidence actually addresses the role
+    if (claimTriple && claimTriple.attribute === 'role_holder') {
+      const role = (claimTriple.role || 'captain').toLowerCase();
+      const isPhotoSnubAI = /\b(snubbing|handshake|photo.*is ai|viral (photo|video|image|clip)|deepfake|meme)\b/i.test(combined);
+      const isWifePersonal = /\b(wife|family|interview|childhood|personal life|marriage)\b/i.test(combined);
+      const isMatchStatsOnly = /\b(scored \d+|scored \d+ runs|hit \d+|batting performance|runs against|runs for)\b/i.test(combined);
+
+      const hasLeadershipContext =
+        role.includes('captain')
+          ? /\b(captain|captaincy|skipper|skippers|leading the side|leadership|appointed as|named as|replaced as|dropped from squad|stepped down|t20i captain|t20 captain|new captain|squad captain)\b/i.test(combined)
+          : role.includes('prime minister') || role.includes('president') || role.includes('minister')
+          ? /\b(prime minister|president|minister|leads the union government|leads the government|union government|elected|in office|assumed office|takes charge)\b/i.test(combined)
+          : role.includes('ceo')
+          ? /\b(ceo|chief executive|leads|appointed|stepped down)\b/i.test(combined)
+          : combined.includes(role);
+
+      if (isPhotoSnubAI && !combined.includes('appointed') && !combined.includes('replaced') && !combined.includes('remains')) {
+        return {
+          relation: 'unclear',
+          relationToClaim: 'INSUFFICIENT',
+          relevance: 'irrelevant',
+          confidence: 98,
+          reasoning: 'Article discusses a viral handshake photo / AI image event but does not establish leadership/role status.',
+          keyEvidence: evidenceSnippet.slice(0, 120),
+          stanceScore: 0,
+          relevanceScore: 0.1,
+          explanation: 'Article discusses a viral photo event but does not establish leadership status.',
+          temporalRelevance: 'HISTORICAL',
+        };
+      }
+
+      if (isWifePersonal && !combined.includes('appointed') && !combined.includes('replaced') && !combined.includes('remains')) {
+        return {
+          relation: 'unclear',
+          relationToClaim: 'INSUFFICIENT',
+          relevance: 'irrelevant',
+          confidence: 97,
+          reasoning: "Article discusses person's personal life or wife's interview but does not establish role status.",
+          keyEvidence: evidenceSnippet.slice(0, 120),
+          stanceScore: 0,
+          relevanceScore: 0.1,
+          explanation: "Article discusses personal life without establishing role status.",
+          temporalRelevance: 'HISTORICAL',
+        };
+      }
+
+      if (isMatchStatsOnly && !combined.includes('captain') && !combined.includes('skipper')) {
+        return {
+          relation: 'unclear',
+          relationToClaim: 'INSUFFICIENT',
+          relevance: 'irrelevant',
+          confidence: 96,
+          reasoning: 'Article discusses individual batting match score without evaluating captaincy status.',
+          keyEvidence: evidenceSnippet.slice(0, 120),
+          stanceScore: 0,
+          relevanceScore: 0.1,
+          explanation: 'Article discusses match batting score without evaluating captaincy status.',
+          temporalRelevance: 'HISTORICAL',
+        };
+      }
+
+      if (!hasLeadershipContext) {
+        return {
+          relation: 'unclear',
+          relationToClaim: 'INSUFFICIENT',
+          relevance: 'irrelevant',
+          confidence: 94,
+          reasoning: `Article mentions subject but does not provide evidence regarding ${role} appointment or status.`,
+          keyEvidence: evidenceSnippet.slice(0, 120),
+          stanceScore: 0,
+          relevanceScore: 0.1,
+          explanation: `Article mentions subject but does not evaluate ${role} status.`,
+          temporalRelevance: 'HISTORICAL',
+        };
+      }
+    }
+
+    // If claim is shape (e.g. Earth is spherical), verify that evidence discusses shape rather than planetary orbit
+    if (claimTriple && claimTriple.attribute === 'shape') {
+      const hasShapeContext = /\b(shape|flat|sphere|spherical|round|oblate spheroid|geodesy|curvature|disc planet|flat earth)\b/i.test(combined);
+      const isSolarOrderOnly = /\b(third planet|distance from sun|solar system|habitable zone|atmosphere)\b/i.test(combined) && !hasShapeContext;
+
+      if (isSolarOrderOnly || !hasShapeContext) {
+        return {
+          relation: 'unclear',
+          relationToClaim: 'INSUFFICIENT',
+          relevance: 'irrelevant',
+          confidence: 95,
+          reasoning: "Article discusses Earth's solar system position or orbit but does not evaluate its geometric shape.",
+          keyEvidence: evidenceSnippet.slice(0, 120),
+          stanceScore: 0,
+          relevanceScore: 0.1,
+          explanation: "Article discusses planetary orbit without evaluating geometric shape.",
+          temporalRelevance: 'HISTORICAL',
+        };
+      }
+    }
+
+    // 2. Explicit Debunk & Fact-Check Contradiction Markers (Strict)
     const contradictMarkers = [
       /\b(fact[- ]check:\s*(false|fake|misleading|untrue)|claim\s+(is|was)\s+(false|fake|fabricated|debunked|untrue)|no evidence\s+(to suggest|that)|debunked:\s*|falsely claimed that|hoax claim)\b/i,
     ];
@@ -284,9 +457,6 @@ Return STRICT JSON only:
         };
       }
     }
-
-    // 2. Entity-Attribute-Value (EAV) Triple Resolution
-    const claimTriple = entityExtractorService.extractClaimTriple(claimText);
 
     // ---------------------------------------------------------------------------------
     // 3. Tournament / Competition Winner Stance Verification (Requirements 2, 6)
@@ -1354,9 +1524,43 @@ Return STRICT JSON only:
   private extractTransitionFromEvidence(text: string): { newEntity: string; oldEntity: string; role: string } | null {
     const clean = text.replace(/['’]/g, "'").replace(/\s+/g, ' ');
 
-    // 1. "... [New Entity] [has been unveiled/named/appointed as] ... [role] ... replacing/succeeding [Old Entity]"
+    // 1. Headline / Infinitive: "[New Entity] to replace / will replace / replaces / replaced [Old Entity] as [Role]"
+    // e.g. "Shreyas Iyer to replace Suryakumar as India's T20I captain - ESPN"
+    // e.g. "Shreyas Iyer replaces Suryakumar Yadav as India's new T20 captain"
+    const p0 = clean.match(/([a-zA-Z\s]+?)\s+(?:to replace|will replace|replaces|replaced|replacing|to succeed|succeeds|succeeded|succeeding|takes over from|took over from|set to replace)\s+([a-zA-Z\s]+?)(?:\s+as\s+(?:the\s+)?(?:new\s+)?([a-zA-Z0-9'\s-]+))?(?:[.;-]|$)/i);
+    if (p0) {
+      const rawNew = p0[1].trim();
+      const words = rawNew.split(/\s+/);
+      const newEntity = (words.length > 3 ? words.slice(-2).join(' ') : rawNew).toLowerCase();
+      const oldWords = p0[2].trim().split(/\s+/);
+      const oldEntity = (oldWords.length > 3 ? oldWords.slice(0, 3).join(' ') : p0[2].trim()).toLowerCase().replace(/[.]+$/, '');
+      const rawRole = p0[3] ? p0[3].trim().toLowerCase().replace(/[.]+$/, '') : 'captain';
+      return {
+        newEntity,
+        oldEntity,
+        role: rawRole,
+      };
+    }
+
+    // 2. Semicolon / Split status: "[New Entity] confirmed/named as [Role]; [Old Entity] dropped/sacked/removed"
+    // e.g. "Shreyas confirmed as India's T20I captain; Suryakumar dropped - Cricinfo"
+    const pConfirmed = clean.match(/([a-zA-Z\s]+?)\s+(?:confirmed|named|appointed|picked|announced|unveiled)\s+(?:as\s+)?(?:the\s+)?(?:new\s+)?([a-zA-Z0-9'\s-]+?)[,;\s]+(?:with\s+)?([a-zA-Z\s]+?)\s+(?:dropped|sacked|removed|relieved|stepped down|replaced)/i);
+    if (pConfirmed) {
+      const rawNew = pConfirmed[1].trim();
+      const words = rawNew.split(/\s+/);
+      const newEntity = (words.length > 3 ? words.slice(-2).join(' ') : rawNew).toLowerCase();
+      const oldWords = pConfirmed[3].trim().split(/\s+/);
+      const oldEntity = (oldWords.length > 3 ? oldWords.slice(0, 3).join(' ') : pConfirmed[3].trim()).toLowerCase().replace(/[.]+$/, '');
+      return {
+        newEntity,
+        role: pConfirmed[2].trim().toLowerCase(),
+        oldEntity,
+      };
+    }
+
+    // 3. "... [New Entity] [has been unveiled/named/appointed as] ... [role] ... replacing/succeeding [Old Entity]"
     // e.g. "Shreyas Iyer has been unveiled as India's new T20I captain, replacing Suryakumar Yadav"
-    const p1 = clean.match(/([a-zA-Z\s]+?)\s+(?:has been\s+)?(?:unveiled|named|appointed|announced|picked|took charge|took over|became)\s+(?:as\s+)?(?:the\s+)?(?:new\s+)?([a-zA-Z0-9'\s-]+?)[,\s]+(?:replacing|succeeding|taking over from)\s+([a-zA-Z\s]+)/i);
+    const p1 = clean.match(/([a-zA-Z\s]+?)\s+(?:has been\s+)?(?:unveiled|named|appointed|announced|picked|took charge|took over|became)\s+(?:as\s+)?(?:the\s+)?(?:new\s+)?([a-zA-Z0-9'\s-]+?)[,\s]+(?:replacing|succeeding|taking over from|after)\s+([a-zA-Z\s]+)/i);
     if (p1) {
       const rawNew = p1[1].trim();
       const words = rawNew.split(/\s+/);
@@ -1370,23 +1574,8 @@ Return STRICT JSON only:
       };
     }
 
-    // 2. "[New Entity] replaced [Old Entity] as [Role]"
-    // e.g. "Shreyas Iyer replaced Suryakumar Yadav as India's T20I captain"
-    const p2 = clean.match(/([a-zA-Z\s]+?)\s+(?:replaced|replaces|replacing|succeeded|succeeding|took over from|takes over from)\s+([a-zA-Z\s]+?)\s+as\s+(?:the\s+)?(?:new\s+)?([a-zA-Z0-9'\s-]+)/i);
-    if (p2) {
-      const words = p2[1].trim().split(/\s+/);
-      const newEntity = (words.length > 3 ? words.slice(-2).join(' ') : p2[1].trim()).toLowerCase();
-      const oldWords = p2[2].trim().split(/\s+/);
-      const oldEntity = (oldWords.length > 3 ? oldWords.slice(0, 3).join(' ') : p2[2].trim()).toLowerCase().replace(/[.]+$/, '');
-      return {
-        newEntity,
-        oldEntity,
-        role: p2[3].trim().toLowerCase().replace(/[.]+$/, ''),
-      };
-    }
-
-    // 3. "[Old Entity] was replaced by [New Entity] as [Role]"
-    const p3 = clean.match(/([a-zA-Z\s]+?)\s+was replaced\s+(?:as\s+(?:the\s+)?([a-zA-Z0-9'\s-]+?)\s+)?by\s+([a-zA-Z\s]+)/i);
+    // 4. "[Old Entity] was replaced by [New Entity] as [Role]"
+    const p3 = clean.match(/([a-zA-Z\s]+?)\s+(?:was\s+)?replaced\s+(?:as\s+(?:the\s+)?([a-zA-Z0-9'\s-]+?)\s+)?by\s+([a-zA-Z\s]+)/i);
     if (p3) {
       const words = p3[1].trim().split(/\s+/);
       const oldEntity = (words.length > 3 ? words.slice(-2).join(' ') : p3[1].trim()).toLowerCase();
@@ -1466,6 +1655,36 @@ Return STRICT JSON only:
     if (p2) {
       const country = p2[1].trim().toLowerCase().replace(/^(the|republic of|federal republic of)\s+/i, '');
       const city = p2[2].trim().toLowerCase().replace(/^(the|a|an)\s+/i, '');
+      return { city, country };
+    }
+
+    // e.g. "Berlin ... German capital" or "Archbishop of Berlin condemns hate crime in German capital"
+    const adjMap: Record<string, string> = {
+      german: 'germany',
+      french: 'france',
+      british: 'united kingdom',
+      indian: 'india',
+      japanese: 'japan',
+      italian: 'italy',
+      american: 'united states',
+      russian: 'russia',
+      chinese: 'china',
+      canadian: 'canada',
+      australian: 'australia',
+      spanish: 'spain',
+    };
+
+    const p3 = clean.match(/\b([a-zA-Z]+)\b[\s\S]{1,40}\b(german|french|british|indian|japanese|italian|american|russian|chinese|canadian|australian|spanish)\s+capital\b/i);
+    if (p3) {
+      const city = p3[1].toLowerCase();
+      const country = adjMap[p3[2].toLowerCase()] || p3[2].toLowerCase();
+      return { city, country };
+    }
+
+    const p4 = clean.match(/\b(german|french|british|indian|japanese|italian|american|russian|chinese|canadian|australian|spanish)\s+capital\b[\s\S]{1,40}\b([a-zA-Z]+)\b/i);
+    if (p4) {
+      const country = adjMap[p4[1].toLowerCase()] || p4[1].toLowerCase();
+      const city = p4[2].toLowerCase();
       return { city, country };
     }
 

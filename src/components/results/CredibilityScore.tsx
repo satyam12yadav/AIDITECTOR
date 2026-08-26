@@ -23,13 +23,6 @@ export const CredibilityScore: React.FC<CredibilityScoreProps> = ({
       ? '#f59e0b' // Amber
       : '#ba1a1a'; // Crimson / Error
 
-  const isNonFactual =
-    typeof verdictLabel === 'string' &&
-    (verdictLabel.toUpperCase().includes('THEOLOGICAL') ||
-      verdictLabel.toUpperCase().includes('OPINION') ||
-      verdictLabel.toUpperCase().includes('PREDICTION') ||
-      verdictLabel.toUpperCase().includes('LIMITED EVIDENCE'));
-
   return (
     <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-8 md:p-10 flex flex-col items-center justify-center relative overflow-hidden shadow-subtle w-full">
       {/* Top Tag */}
@@ -42,40 +35,31 @@ export const CredibilityScore: React.FC<CredibilityScoreProps> = ({
 
       {/* Circular Gauge */}
       <div className="w-56 h-56 md:w-64 md:h-64 relative mb-6 flex items-center justify-center">
-        {isNonFactual ? (
-          <div className="w-48 h-48 rounded-full border-4 border-dashed border-outline-variant flex flex-col items-center justify-center text-center p-4 bg-surface-container-low">
-            <span className="font-mono text-3xl font-extrabold text-on-surface">N/A</span>
-            <span className="font-label-code text-[11px] text-outline font-semibold uppercase tracking-wider mt-1">
-              {verdictLabel.toUpperCase().includes('LIMITED') ? 'Coverage: Low' : 'Non-Factual'}
-            </span>
-          </div>
-        ) : (
-          <svg className="circular-chart w-full h-full" style={{ stroke: strokeColor }} viewBox="0 0 36 36">
-            <path
-              className="circle-bg"
-              d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-            />
-            <path
-              className="circle"
-              d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
-              strokeDasharray={`${score}, 100`}
-            />
-            <text className="percentage" x="18" y="20.35">
-              {score}
-            </text>
-            <text
-              fill="#76777d"
-              fontFamily="'Inter', sans-serif"
-              fontSize="0.16em"
-              textAnchor="middle"
-              x="18"
-              y="25.5"
-              fontWeight="500"
-            >
-              / 100
-            </text>
-          </svg>
-        )}
+        <svg className="circular-chart w-full h-full" style={{ stroke: strokeColor }} viewBox="0 0 36 36">
+          <path
+            className="circle-bg"
+            d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+          />
+          <path
+            className="circle"
+            d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+            strokeDasharray={`${score}, 100`}
+          />
+          <text className="percentage" x="18" y="20.35">
+            {score}
+          </text>
+          <text
+            fill="#76777d"
+            fontFamily="'Inter', sans-serif"
+            fontSize="0.16em"
+            textAnchor="middle"
+            x="18"
+            y="25.5"
+            fontWeight="500"
+          >
+            / 100
+          </text>
+        </svg>
       </div>
 
       {/* Verdict and Confidence */}

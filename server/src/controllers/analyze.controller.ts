@@ -7,6 +7,7 @@ import { evidenceRetrieverService } from '../services/evidenceRetriever.service.
 import { geminiReasoningService } from '../services/geminiReasoning.service.js';
 import { credibilityScorerService } from '../services/credibilityScorer.service.js';
 import { sourceRegistry } from '../services/sourceRegistry.service.js';
+import { localModelClassifierService } from '../services/localModelClassifier.service.js';
 
 export const analyzeArticle = async (
   req: Request<{}, {}, AnalyzeRequestBody>,
@@ -154,6 +155,11 @@ export const analyzeArticle = async (
       console.log(`============================================================\n`);
     }
 
+    // 6. Local BERT Transformer Model Inference (Pulk17/Fake-News-Detection)
+    const tModelStart = Date.now();
+    const modelInference = await localModelClassifierService.classifyText(articleResult.text);
+    timings.modelInferenceMs = Date.now() - tModelStart;
+
     const responseData: AnalyzeResponseData = {
       article: articleResult,
       claims: evaluatedClaims,
@@ -168,6 +174,7 @@ export const analyzeArticle = async (
       sources: Array.from(sourceMap.values()),
       articleSummary: scoringResult.articleSummary,
       diagnostics: scoringResult.diagnostics,
+      modelInference,
       timings,
     };
 

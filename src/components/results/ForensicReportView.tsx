@@ -31,34 +31,34 @@ export const ForensicReportView: React.FC<ForensicReportViewProps> = ({ result }
     <div className="w-full flex flex-col items-center py-4">
       {/* Top Document Controls (Hidden when printing) */}
       <div className="w-full max-w-4xl flex justify-between items-center mb-4 no-print px-2">
-        <div className="text-xs font-label-code text-outline uppercase flex items-center gap-1.5 font-bold">
-          <span className="material-symbols-outlined text-[16px]">verified</span>
-          Institutional Forensic Verification Dossier
+        <div className="text-xs text-zinc-500 uppercase flex items-center gap-1.5 font-semibold">
+          <span className="material-symbols-outlined text-[16px] text-emerald-600">verified</span>
+          Fact-Check & Credibility Report
         </div>
         <div className="flex gap-2">
           <button
             onClick={handlePrint}
-            className="px-3.5 py-1.5 border border-outline-variant bg-surface-container-lowest rounded font-label-code text-xs text-on-surface hover:bg-surface-variant transition-colors flex items-center gap-1.5 shadow-subtle"
+            className="px-3 py-1.5 border border-zinc-200 bg-white rounded-lg text-xs text-zinc-700 hover:bg-zinc-50 transition-colors flex items-center gap-1.5 shadow-sm"
           >
             <span className="material-symbols-outlined text-[16px]">print</span>
-            Print Forensic Report
+            Print Report
           </button>
         </div>
       </div>
 
       {/* Main Document Article */}
-      <article className="w-full max-w-4xl bg-surface-container-lowest border border-outline-variant shadow-ambient rounded-lg relative overflow-hidden">
+      <article className="w-full max-w-4xl bg-white border border-zinc-200 shadow-sm rounded-2xl relative overflow-hidden">
         {/* Top Accent Line */}
-        <div className={`h-2 w-full ${accentColor} absolute top-0 left-0`} />
+        <div className={`h-1.5 w-full ${accentColor} absolute top-0 left-0`} />
 
         <div className="p-6 md:p-10 space-y-8">
           {/* 1. FINAL RESULT HEADER */}
-          <header className="border-b border-outline-variant pb-6">
+          <header className="border-b border-zinc-200 pb-6">
             <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-              <span className="text-outline font-label-caps text-xs tracking-wider font-bold">
-                DOSSIER ID: {result.id}
+              <span className="text-zinc-400 text-xs font-semibold tracking-wider">
+                VERIFICATION ID: {result.id}
               </span>
-              <span className="font-label-code text-xs text-outline">
+              <span className="text-xs text-zinc-400">
                 Analyzed: {result.analyzedAt}
               </span>
             </div>
@@ -78,18 +78,9 @@ export const ForensicReportView: React.FC<ForensicReportViewProps> = ({ result }
                       Overall Credibility Score
                     </div>
                     <div className="text-2xl md:text-3xl font-extrabold font-mono text-on-background">
-                      {isNonFactual ? (
-                        <span>
-                          N/A{' '}
-                          <span className="text-xs text-outline font-normal font-sans">
-                            ({result.verdictLabel.toUpperCase().includes('LIMITED') ? 'Low Coverage' : 'Non-Factual'})
-                          </span>
-                        </span>
-                      ) : (
-                        <span>
-                          {result.credibilityScore} <span className="text-base text-outline font-normal">/ 100</span>
-                        </span>
-                      )}
+                      <span>
+                        {result.credibilityScore} <span className="text-base text-outline font-normal">/ 100</span>
+                      </span>
                     </div>
                   </div>
 
@@ -117,7 +108,7 @@ export const ForensicReportView: React.FC<ForensicReportViewProps> = ({ result }
                       Verification Confidence
                     </div>
                     <div className="text-2xl md:text-3xl font-extrabold font-mono text-primary">
-                      {isNonFactual ? 'N/A' : `${result.confidenceLevel}%`}
+                      {result.confidenceLevel || 50}%
                     </div>
                   </div>
                 </div>
@@ -198,24 +189,51 @@ export const ForensicReportView: React.FC<ForensicReportViewProps> = ({ result }
                 Source Distribution
               </h3>
               <div className="space-y-2.5 font-label-code text-xs">
-                <div className="flex justify-between pb-1.5 border-b border-outline-variant/60">
-                  <span className="text-on-surface-variant">Sources analyzed:</span>
-                  <span className="font-bold text-on-surface">{stats.totalAnalyzed}</span>
-                </div>
-                <div className="flex justify-between pb-1.5 border-b border-outline-variant/60">
-                  <span className="text-on-surface-variant">Independent sources:</span>
-                  <span className="font-bold text-primary">{stats.independentCount}</span>
-                </div>
-                <div className="flex justify-between pb-1.5 border-b border-outline-variant/60">
-                  <span className="text-on-surface-variant">High-quality sources (Tiers 1-3):</span>
-                  <span className="font-bold text-emerald-700">{stats.highQualityCount}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-on-surface-variant">Conflicting sources:</span>
-                  <span className={`font-bold ${stats.conflictingCount > 0 ? 'text-amber-700' : 'text-on-surface'}`}>
-                    {stats.conflictingCount}
-                  </span>
-                </div>
+                {result.coverageStats ? (
+                  <>
+                    <div className="flex justify-between pb-1.5 border-b border-outline-variant/60">
+                      <span className="text-on-surface-variant">Sources searched:</span>
+                      <span className="font-bold text-on-surface">{result.coverageStats.sourcesSearchedCount}</span>
+                    </div>
+                    <div className="flex justify-between pb-1.5 border-b border-outline-variant/60">
+                      <span className="text-on-surface-variant">Relevant sources found:</span>
+                      <span className="font-bold text-primary">{result.coverageStats.relevantSourcesFoundCount}</span>
+                    </div>
+                    <div className="flex justify-between pb-1.5 border-b border-outline-variant/60">
+                      <span className="text-on-surface-variant">Supporting sources:</span>
+                      <span className="font-bold text-emerald-700">{result.coverageStats.supportingSourcesCount}</span>
+                    </div>
+                    <div className="flex justify-between pb-1.5 border-b border-outline-variant/60">
+                      <span className="text-on-surface-variant">Contradicting sources:</span>
+                      <span className="font-bold text-red-700">{result.coverageStats.contradictingSourcesCount}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-on-surface-variant">Independent evidence clusters:</span>
+                      <span className="font-bold text-primary">{result.coverageStats.independentClustersCount}</span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex justify-between pb-1.5 border-b border-outline-variant/60">
+                      <span className="text-on-surface-variant">Sources analyzed:</span>
+                      <span className="font-bold text-on-surface">{stats.totalAnalyzed}</span>
+                    </div>
+                    <div className="flex justify-between pb-1.5 border-b border-outline-variant/60">
+                      <span className="text-on-surface-variant">Independent sources:</span>
+                      <span className="font-bold text-primary">{stats.independentCount}</span>
+                    </div>
+                    <div className="flex justify-between pb-1.5 border-b border-outline-variant/60">
+                      <span className="text-on-surface-variant">High-quality sources (Tiers 1-3):</span>
+                      <span className="font-bold text-emerald-700">{stats.highQualityCount}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-on-surface-variant">Conflicting sources:</span>
+                      <span className={`font-bold ${stats.conflictingCount > 0 ? 'text-amber-700' : 'text-on-surface'}`}>
+                        {stats.conflictingCount}
+                      </span>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 
@@ -244,6 +262,76 @@ export const ForensicReportView: React.FC<ForensicReportViewProps> = ({ result }
               </div>
             </div>
           </section>
+
+          {/* 3B. DATASET SIMILARITY SIGNAL (PHASE 3) */}
+          {result.datasetSimilarity && result.datasetSimilarity.nearestExamples && result.datasetSimilarity.nearestExamples.length > 0 && (
+            <section className="bg-surface-container p-6 rounded-lg border border-outline-variant">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                <h2 className="font-headline-md text-base md:text-lg text-primary font-bold flex items-center gap-2">
+                  <span className="material-symbols-outlined text-[20px]">database</span>
+                  Dataset Similarity
+                </h2>
+                <span
+                  className={`font-label-caps text-xs px-2.5 py-1 rounded font-bold uppercase tracking-wider border ${
+                    result.datasetSimilarity.datasetMatch === 'HIGH'
+                      ? 'bg-amber-100 text-amber-900 border-amber-300'
+                      : result.datasetSimilarity.datasetMatch === 'MEDIUM'
+                      ? 'bg-blue-100 text-blue-900 border-blue-300'
+                      : 'bg-surface-container-low text-on-surface-variant border-outline-variant'
+                  }`}
+                >
+                  {result.datasetSimilarity.datasetMatch} Match
+                </span>
+              </div>
+
+              <p className="text-xs text-on-surface-variant font-body-sm mb-4">
+                {result.datasetSimilarity.summary}
+              </p>
+
+              <div className="bg-white p-4 rounded border border-outline-variant space-y-3 font-label-code text-xs">
+                <div className="flex items-center justify-between border-b border-outline-variant/60 pb-2">
+                  <span className="text-outline font-semibold">Nearest example:</span>
+                  <span className="font-bold text-on-surface truncate max-w-[70%]">
+                    "{result.datasetSimilarity.nearestExamples[0].title}"
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                  <div className="bg-surface-container-low p-2 rounded">
+                    <div className="text-[10px] text-outline uppercase font-semibold">Dataset Label</div>
+                    <div
+                      className={`font-bold text-sm ${
+                        result.datasetSimilarity.nearestLabel === 'FAKE' ? 'text-red-700' : 'text-emerald-700'
+                      }`}
+                    >
+                      {result.datasetSimilarity.nearestLabel}
+                    </div>
+                  </div>
+                  <div className="bg-surface-container-low p-2 rounded">
+                    <div className="text-[10px] text-outline uppercase font-semibold">Similarity</div>
+                    <div className="font-bold text-sm text-primary">
+                      {Math.round(result.datasetSimilarity.nearestExamples[0].similarity * 100)}% semantic similarity
+                    </div>
+                  </div>
+                  <div className="bg-surface-container-low p-2 rounded">
+                    <div className="text-[10px] text-outline uppercase font-semibold">Fake Signal</div>
+                    <div className="font-bold text-sm text-red-700">
+                      {result.datasetSimilarity.fakeSimilarity}
+                    </div>
+                  </div>
+                  <div className="bg-surface-container-low p-2 rounded">
+                    <div className="text-[10px] text-outline uppercase font-semibold">Real Signal</div>
+                    <div className="font-bold text-sm text-emerald-700">
+                      {result.datasetSimilarity.realSimilarity}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-3 text-[11px] text-outline italic font-body-sm">
+                * Note: Dataset similarity measures topical and semantic pattern overlap with historical archives. It is a secondary diagnostic signal and does not represent probability of factual truth.
+              </div>
+            </section>
+          )}
 
           {/* 4. CLAIM-BY-CLAIM DETAILED FORENSIC BREAKDOWN */}
           <section className="space-y-4">
@@ -282,18 +370,14 @@ export const ForensicReportView: React.FC<ForensicReportViewProps> = ({ result }
                         {claim.claimScore !== undefined ? (
                           <span
                             className={`font-label-code text-[11px] px-2 py-0.5 rounded border font-bold ${
-                              claim.claimScore >= 80
+                              (claim.claimScore ?? 50) >= 80
                                 ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
-                                : claim.claimScore <= 25
+                                : (claim.claimScore ?? 50) <= 25
                                 ? 'bg-red-100 text-red-900 border-red-300'
                                 : 'bg-surface-container text-on-surface border-outline-variant'
                             }`}
                           >
-                            Score: {claim.claimScore} / 100
-                          </span>
-                        ) : claim.isVerifiable === false ? (
-                          <span className="font-label-code text-[11px] bg-white px-2 py-0.5 rounded border border-outline-variant text-on-surface-variant font-bold">
-                            Score: N/A
+                            Score: {claim.claimScore ?? 50} / 100
                           </span>
                         ) : null}
                         {claim.confidence !== undefined && claim.isVerifiable !== false && (

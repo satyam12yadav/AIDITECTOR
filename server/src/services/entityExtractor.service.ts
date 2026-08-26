@@ -18,6 +18,7 @@ export interface ClaimTriple {
     | 'winner'
     | 'ownership'
     | 'quantity'
+    | 'quantity_count'
     | 'comparison'
     | 'general';
   claimValue: string;
@@ -359,12 +360,14 @@ export class EntityExtractorService {
     }
 
     // 2b. "[Holder] (is|was|has never been) currently/now [Role/Possessive]"
-    // e.g. "Shreyas Iyer is currently India's T20I captain", "Suryakumar Yadav was India's T20I captain earlier in 2026", "Suryakumar Yadav has never been India's T20I captain"
-    const holderPrefixMatch = clean.match(/^([a-zA-Z\s]+?)\s+(is|was|has never been)\s+(?:currently\s+|now\s+|the current\s+)?(?:the\s+)?([a-zA-Z0-9'\s-]+?\s+(?:captain|ceo|president|prime minister|chief minister|coach|manager))(?:\s+of\s+([a-zA-Z0-9'\s-]+))?(?:\s+(?:earlier\s+in\s+\d{4}|earlier|previously|formerly|in\s+\d{4}))?[.]?$/i);
+    // e.g. "Shreyas Iyer is currently India's T20I captain", "Suryakumar Yadav is captain of India", "Suryakumar Yadav was India's T20I captain earlier in 2026", "Suryakumar Yadav has never been India's T20I captain"
+    const holderPrefixMatch = clean.match(/^([a-zA-Z\s]+?)\s+(is|was|has never been)\s+(?:currently\s+|now\s+|the current\s+)?(?:the\s+)?(?:([a-zA-Z0-9'\s-]+?)\s+)?(captain|t20i captain|t20 captain|skipper|ceo|president|prime minister|chief minister|coach|manager)(?:\s+of\s+([a-zA-Z0-9'\s-]+))?(?:\s+(?:earlier\s+in\s+\d{4}|earlier|previously|formerly|in\s+\d{4}))?[.]?$/i);
     if (holderPrefixMatch) {
       const holderName = holderPrefixMatch[1].trim();
-      const roleName = holderPrefixMatch[3].trim();
-      const entityContext = holderPrefixMatch[4] ? holderPrefixMatch[4].trim() : '';
+      const qualifier = holderPrefixMatch[3] ? holderPrefixMatch[3].trim() : '';
+      const baseRole = holderPrefixMatch[4].trim();
+      const roleName = qualifier ? `${qualifier} ${baseRole}` : baseRole;
+      const entityContext = holderPrefixMatch[5] ? holderPrefixMatch[5].trim() : qualifier.replace(/['’]s$/i, '');
       const isPast = holderPrefixMatch[2].toLowerCase() === 'was' || /\b(earlier|previously|formerly)\b/i.test(clean);
       const isNever = holderPrefixMatch[2].toLowerCase().includes('never');
 
@@ -405,7 +408,7 @@ export class EntityExtractorService {
     }
 
     // 3b. Shape & Geometric Form assertion (Requirement 3, 4, 7): e.g. "The Earth is flat", "The Earth is round", "The Earth is spherical", "The Earth is an oblate spheroid"
-    const shapeMatch = clean.match(/^(?:the\s+)?([a-zA-Z\s]+?)\s+(?:is|has|is shaped like|has the shape of)\s+(?:a\s+|an\s+)?(flat|round|spherical|sphere|oblate spheroid|ellipsoid|geoid|disc|disc-shaped|cube|cubical|cylinder|cylindrical|pyramid|pyramidal|donut-shaped|torus)[.]?$/i);
+    const shapeMatch = clean.match(/^(?:the\s+)?([a-zA-Z\s]+?)\s+(?:is|has|is shaped like|has the shape of)\s+(?:an?\s+)?(?:approximately\s+|roughly\s+|nearly\s+|empirically\s+)?(flat|round|spherical|sphere|oblate spheroid|ellipsoid|geoid|disc|disc-shaped|cube|cubical|cylinder|cylindrical|pyramid|pyramidal|donut-shaped|torus)[.]?$/i);
     if (shapeMatch) {
       const subject = shapeMatch[1].trim().replace(/^(the|a|an)\s+/i, '');
       const shapeVal = shapeMatch[2].trim().toLowerCase();
@@ -552,6 +555,48 @@ export class EntityExtractorService {
         entity: 'Water',
         attribute: 'scientific',
         claimValue: val,
+        isNegated,
+      };
+    }
+
+    // 9b. Quantity / Membership Count assertion: e.g. "Earth has six continents", "The Solar System has 8 planets", "There are 7 continents on Earth"
+    const countWordMap: Record<string, number> = {
+      one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
+      eleven: 11, twelve: 12, twenty: 20, thirty: 30, hundred: 100,
+    };
+
+    const countMatch1 = clean.match(/^(?:the\s+)?([a-zA-Z\s]+?)\s+(?:has|have|contains|is divided into|is composed of|consists of)\s+(?:approximately\s+|roughly\s+|about\s+)?(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+([a-zA-Z0-9\s-]+?)[.]?$/i);
+    if (countMatch1) {
+      const subject = countMatch1[1].trim().replace(/^(the|a|an)\s+/i, '');
+      const rawCount = countMatch1[2].toLowerCase();
+      const numVal = isNaN(Number(rawCount)) ? countWordMap[rawCount] || 0 : Number(rawCount);
+      const itemTopic = countMatch1[3].trim().toLowerCase();
+      return {
+        entity: subject,
+        attribute: 'quantity_count',
+        holder: subject,
+        property: itemTopic,
+        claimValue: `${numVal} ${itemTopic}`,
+        numericVal: numVal,
+        unit: itemTopic,
+        isNegated,
+      };
+    }
+
+    const countMatch2 = clean.match(/^(?:there\s+(?:is|are))\s+(?:approximately\s+|roughly\s+|about\s+)?(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+([a-zA-Z0-9\s-]+?)\s+(?:in|on|within)\s+(?:the\s+)?([a-zA-Z\s]+?)[.]?$/i);
+    if (countMatch2) {
+      const rawCount = countMatch2[1].toLowerCase();
+      const numVal = isNaN(Number(rawCount)) ? countWordMap[rawCount] || 0 : Number(rawCount);
+      const itemTopic = countMatch2[2].trim().toLowerCase();
+      const subject = countMatch2[3].trim().replace(/^(the|a|an)\s+/i, '');
+      return {
+        entity: subject,
+        attribute: 'quantity_count',
+        holder: subject,
+        property: itemTopic,
+        claimValue: `${numVal} ${itemTopic}`,
+        numericVal: numVal,
+        unit: itemTopic,
         isNegated,
       };
     }

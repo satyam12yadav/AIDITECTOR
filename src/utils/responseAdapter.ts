@@ -335,5 +335,8 @@ export const transformBackendResponseToUi = (
     totalClaimsIdentified: mappedClaims.length,
     articleSummary: (backendData as any).articleSummary,
     auditTrail: (backendData as any).auditTrail,
+    coverageStats: (backendData as any).coverageStats,
+    clusters: (backendData as any).clusters,
+    datasetSimilarity: (backendData as any).datasetSimilarity,
   };
 };

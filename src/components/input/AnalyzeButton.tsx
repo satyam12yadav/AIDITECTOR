@@ -16,22 +16,22 @@ export const AnalyzeButton: React.FC<AnalyzeButtonProps> = ({
       type="button"
       onClick={onClick}
       disabled={disabled || isLoading}
-      className={`px-8 py-3 rounded font-label-caps text-xs md:text-sm font-bold uppercase tracking-wider flex items-center justify-center space-x-2 transition-all ${
+      className={`px-6 py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center space-x-2 transition-all shadow-sm ${
         disabled
-          ? 'bg-surface-container-high text-outline cursor-not-allowed opacity-70 border border-outline-variant'
-          : 'bg-primary text-on-primary hover:bg-neutral-800 active:scale-[0.99] shadow-subtle cursor-pointer'
+          ? 'bg-zinc-100 text-zinc-400 cursor-not-allowed border border-zinc-200'
+          : 'bg-zinc-900 text-white hover:bg-zinc-800 active:scale-[0.98] cursor-pointer'
       }`}
-      aria-label="Analyze Article"
+      aria-label="Check Credibility"
     >
       {isLoading ? (
         <>
           <span className="material-symbols-outlined text-[18px] animate-spin">progress_activity</span>
-          <span>Analyzing Evidence...</span>
+          <span>Checking Evidence...</span>
         </>
       ) : (
         <>
-          <span>Analyze Article</span>
-          <span className="material-symbols-outlined text-[18px]">troubleshoot</span>
+          <span>Check Credibility</span>
+          <span className="material-symbols-outlined text-[18px]">search</span>
         </>
       )}
     </button>

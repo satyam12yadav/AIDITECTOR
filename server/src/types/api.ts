@@ -222,6 +222,79 @@ export interface MultiClaimArticleSummary {
   whyThisScore: string;
 }
 
+export type SourceCategory =
+  | 'FACT_CHECKER'
+  | 'OFFICIAL_FACT_CHECK'
+  | 'WIRE_SERVICE'
+  | 'OFFICIAL'
+  | 'NEWS'
+  | 'REFERENCE';
+
+export interface SourceRegistryEntry {
+  name: string;
+  domain: string;
+  url: string;
+  category: SourceCategory | string;
+  sourceTier: 1 | 2 | 3 | 4 | 5;
+  credibilityTier?: 1 | 2 | 3 | 4 | 5;
+  credibilityWeight?: number;
+  country: string;
+  language: string;
+  factCheckCapability: boolean;
+  searchMethod: 'SITE_SEARCH' | 'API' | 'RSS' | 'WEB';
+  isOfficial?: boolean;
+  isFactChecker?: boolean;
+  isWireService?: boolean;
+  enabled: boolean;
+}
+
+export interface EvidenceCluster {
+  clusterId: string;
+  primaryDomain: string;
+  origin: string; // e.g. 'Reuters', 'PTI', 'BCCI Official'
+  sourceArticles: RetrievedEvidenceItem[];
+  stance: EvidenceRelation;
+  quality: number;
+  independenceScore: number;
+  representativeSnippet: string;
+}
+
+export interface MultiSourceSearchCoverage {
+  sourcesSearchedCount: number;
+  relevantSourcesFoundCount: number;
+  supportingSourcesCount: number;
+  contradictingSourcesCount: number;
+  irrelevantSourcesCount: number;
+  independentClustersCount: number;
+  clusters: EvidenceCluster[];
+}
+
+export interface DatasetSimilarityItem {
+  id: string;
+  label: 'FAKE' | 'REAL';
+  title: string;
+  similarity: number;
+}
+
+export interface DatasetSimilaritySignal {
+  datasetMatch: 'HIGH' | 'MEDIUM' | 'LOW';
+  nearestExamples: DatasetSimilarityItem[];
+  fakeSimilarity: number;
+  realSimilarity: number;
+  nearestLabel: 'FAKE' | 'REAL';
+  summary: string;
+}
+
+export interface LocalModelInferenceResult {
+  modelName: string;
+  prediction: 'REAL' | 'FAKE';
+  confidence: number;
+  fakeProbability: number;
+  realProbability: number;
+  isLocal: boolean;
+  inferenceTimeMs: number;
+}
+
 export interface AnalyzeResponseData {
   article: ArticleMetadata;
   claims: ExtractedClaim[];
@@ -237,6 +310,10 @@ export interface AnalyzeResponseData {
   articleSummary?: MultiClaimArticleSummary;
   diagnostics?: ScoreDiagnosticItem[];
   auditTrail?: EvidenceAuditTrail;
+  coverageStats?: MultiSourceSearchCoverage;
+  clusters?: EvidenceCluster[];
+  datasetSimilarity?: DatasetSimilaritySignal;
+  modelInference?: LocalModelInferenceResult;
   timings?: Record<string, number>;
 }
 

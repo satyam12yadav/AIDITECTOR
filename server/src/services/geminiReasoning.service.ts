@@ -91,8 +91,8 @@ Key Fact: "${e.keyEvidence || 'None'}"
 Explanation: "${e.explanation || 'No explanation provided'}"`).join('\n\n')}
 
 DECISION RULES:
-- "TRUE": Strong, reliable DIRECT evidence (Tier 1, 2, or 3) directly proves the claim with no material contradictory evidence.
-- "FALSE": Reliable DIRECT evidence directly contradicts or debunks the claim.
+- "TRUE": Strong, reliable DIRECT evidence (Tier 1, 2, or 3) entails and proves the claim with no material contradictory evidence.
+- "FALSE": Reliable DIRECT evidence directly contradicts or refutes the claim (including conflicting propositions such as differing capitals, locations, numbers, dates, winners, composition, or leadership transitions even if the text does not use literal words like "false" or "not").
 - "MISLEADING": The claim contains partial truth or accurate entities but presents them incorrectly, out of context, or with misleading implications.
 - "UNVERIFIED": There is insufficient or only "related" evidence to determine the truth. (Absence of direct evidence must NOT be marked TRUE or FALSE).
 - "UNKNOWN": The claim is fundamentally unfalsifiable or cannot be reliably evaluated.

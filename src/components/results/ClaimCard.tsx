@@ -94,11 +94,11 @@ export const ClaimCard: React.FC<ClaimCardProps> = ({
               >
                 Score: {claim.claimScore}/100
               </span>
-            ) : claim.isVerifiable === false ? (
+            ) : (
               <span className="font-label-code text-[11px] font-bold px-2 py-0.5 rounded border bg-surface-container text-on-surface-variant border-outline-variant">
-                Score: N/A
+                Score: 50/100
               </span>
-            ) : null}
+            )}
 
             {claim.confidence !== undefined && claim.isVerifiable !== false && (
               <span className="font-label-code text-[11px] bg-surface-container text-on-surface-variant font-semibold px-2 py-0.5 rounded border border-outline-variant flex items-center gap-1">

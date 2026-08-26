@@ -68,6 +68,27 @@ export interface ClaimItem {
   auditTrail?: EvidenceAuditTrail;
 }
 
+export interface EvidenceCluster {
+  clusterId: string;
+  primaryDomain: string;
+  origin: string;
+  sourceArticles: EvidenceItem[];
+  stance: 'supports' | 'contradicts' | 'unclear';
+  quality: number;
+  independenceScore: number;
+  representativeSnippet: string;
+}
+
+export interface MultiSourceSearchCoverage {
+  sourcesSearchedCount: number;
+  relevantSourcesFoundCount: number;
+  supportingSourcesCount: number;
+  contradictingSourcesCount: number;
+  irrelevantSourcesCount: number;
+  independentClustersCount: number;
+  clusters: EvidenceCluster[];
+}
+
 export interface EvidenceAuditTrail {
   supportStrength: number; // 0.0 - 1.0
   contradictionStrength: number; // 0.0 - 1.0
@@ -126,6 +147,22 @@ export interface SourceDistributionStats {
   unclearCount: number;
 }
 
+export interface DatasetSimilarityItem {
+  id: string;
+  label: 'FAKE' | 'REAL';
+  title: string;
+  similarity: number;
+}
+
+export interface DatasetSimilaritySignal {
+  datasetMatch: 'HIGH' | 'MEDIUM' | 'LOW';
+  nearestExamples: DatasetSimilarityItem[];
+  fakeSimilarity: number;
+  realSimilarity: number;
+  nearestLabel: 'FAKE' | 'REAL';
+  summary: string;
+}
+
 export interface AnalysisResult {
   id: string;
   title: string;
@@ -156,6 +193,9 @@ export interface AnalysisResult {
   isPartial?: boolean;
   extractionWarning?: string;
   auditTrail?: EvidenceAuditTrail;
+  coverageStats?: MultiSourceSearchCoverage;
+  clusters?: EvidenceCluster[];
+  datasetSimilarity?: DatasetSimilaritySignal;
 }
 
 export type AnalysisInputMode = 'url' | 'text';

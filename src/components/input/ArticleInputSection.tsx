@@ -3,47 +3,36 @@ import { AnalysisInputMode } from '../../types/analysis';
 import { UrlInput } from './UrlInput';
 import { TextInput } from './TextInput';
 import { AnalyzeButton } from './AnalyzeButton';
-import { sampleArticlePresets } from '../../mocks/mockAnalysisData';
 
 interface ArticleInputSectionProps {
   onAnalyze: (payload: { mode: AnalysisInputMode; value: string; selectedPresetIdx?: number }) => void;
   isLoading?: boolean;
 }
 
+const quickClaims = [
+  { label: 'Cricket Captaincy', text: "Suryakumar Yadav is currently India's T20I captain." },
+  { label: 'Six Continents', text: "Earth has six continents." },
+  { label: 'Germany Capital', text: "The capital of Germany is Paris." },
+  { label: 'Water Boiling Point', text: "Water boils at 100 degrees Celsius." },
+  { label: 'Ram Mandir', text: "Ram Mandir is located in Ayodhya, Uttar Pradesh, India." },
+];
+
 export const ArticleInputSection: React.FC<ArticleInputSectionProps> = ({
   onAnalyze,
   isLoading = false,
 }) => {
-  const [mode, setMode] = useState<AnalysisInputMode>('url');
-  const [urlValue, setUrlValue] = useState<string>('https://financial-forensics.org/reports/2024/fiscal-projections-middle-class.html');
-  const [textValue, setTextValue] = useState<string>('');
-  const [selectedPresetIdx, setSelectedPresetIdx] = useState<number>(0);
+  const [mode, setMode] = useState<AnalysisInputMode>('text');
+  const [urlValue, setUrlValue] = useState<string>('https://www.thehindu.com/news/national/');
+  const [textValue, setTextValue] = useState<string>("Suryakumar Yadav is currently India's T20I captain.");
+  const [selectedIdx, setSelectedIdx] = useState<number>(0);
 
   const currentValue = mode === 'url' ? urlValue : textValue;
   const isInputValid = currentValue.trim().length > 0;
 
-  const handlePresetSelect = (index: number) => {
-    setSelectedPresetIdx(index);
-    const preset = sampleArticlePresets[index];
-    if (mode === 'url') {
-      setUrlValue(preset.url);
-    } else {
-      setTextValue(preset.text);
-    }
-  };
-
-  const handleToggleMode = () => {
-    if (mode === 'url') {
-      setMode('text');
-      if (!textValue && sampleArticlePresets[selectedPresetIdx]) {
-        setTextValue(sampleArticlePresets[selectedPresetIdx].text);
-      }
-    } else {
-      setMode('url');
-      if (!urlValue && sampleArticlePresets[selectedPresetIdx]) {
-        setUrlValue(sampleArticlePresets[selectedPresetIdx].url);
-      }
-    }
+  const handleQuickClaim = (claimText: string, idx: number) => {
+    setSelectedIdx(idx);
+    setMode('text');
+    setTextValue(claimText);
   };
 
   const handleSubmit = () => {
@@ -51,35 +40,64 @@ export const ArticleInputSection: React.FC<ArticleInputSectionProps> = ({
     onAnalyze({
       mode,
       value: currentValue,
-      selectedPresetIdx,
+      selectedPresetIdx: selectedIdx,
     });
   };
 
   return (
-    <div className="w-full bg-surface-container-lowest border border-outline-variant p-6 md:p-8 rounded-lg flex flex-col space-y-6 relative shadow-ambient">
-      {/* Floating Header Tag */}
-      <div className="absolute -top-3 left-6 bg-surface-container-lowest px-3 border border-outline-variant rounded font-label-caps text-xs text-on-surface uppercase tracking-wider font-bold shadow-subtle flex items-center gap-1.5">
-        <span className="w-2 h-2 rounded-full bg-primary"></span>
-        {mode === 'url' ? 'Target URL' : 'Target Text Document'}
-      </div>
-
-      {/* Preset Quick Fill Bar */}
-      <div className="flex flex-wrap items-center gap-2 pt-2">
-        <span className="font-label-code text-xs text-outline uppercase font-semibold">
-          Sample Evidence:
-        </span>
-        {sampleArticlePresets.map((preset, idx) => (
+    <div className="w-full bg-white border border-zinc-200 p-6 md:p-8 rounded-2xl flex flex-col space-y-6 shadow-sm hover:shadow-md transition-all">
+      {/* Mode Switcher Tabs */}
+      <div className="flex items-center justify-between border-b border-zinc-100 pb-4">
+        <div className="flex items-center space-x-2 bg-zinc-100/80 p-1 rounded-xl">
           <button
-            key={preset.name}
             type="button"
-            onClick={() => handlePresetSelect(idx)}
-            className={`font-label-code text-xs px-2.5 py-1 rounded border transition-all ${
-              selectedPresetIdx === idx
-                ? 'bg-primary-container text-on-primary-container border-primary font-bold shadow-subtle'
-                : 'bg-surface-container-low text-on-surface-variant border-outline-variant hover:border-outline'
+            onClick={() => setMode('text')}
+            className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+              mode === 'text'
+                ? 'bg-white text-zinc-900 shadow-sm'
+                : 'text-zinc-600 hover:text-zinc-900'
             }`}
           >
-            {preset.name}
+            <span className="material-symbols-outlined text-[16px]">edit_note</span>
+            <span>Claim / Text</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode('url')}
+            className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+              mode === 'url'
+                ? 'bg-white text-zinc-900 shadow-sm'
+                : 'text-zinc-600 hover:text-zinc-900'
+            }`}
+          >
+            <span className="material-symbols-outlined text-[16px]">link</span>
+            <span>Article URL</span>
+          </button>
+        </div>
+
+        <span className="hidden sm:inline-flex items-center gap-1 text-xs text-zinc-500 font-medium">
+          <span className="material-symbols-outlined text-[14px]">bolt</span>
+          Local BERT + Live RAG
+        </span>
+      </div>
+
+      {/* Quick Test Claim Pills */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs text-zinc-400 font-medium">
+          Quick test:
+        </span>
+        {quickClaims.map((item, idx) => (
+          <button
+            key={item.label}
+            type="button"
+            onClick={() => handleQuickClaim(item.text, idx)}
+            className={`text-xs px-3 py-1 rounded-full border transition-all ${
+              mode === 'text' && textValue === item.text
+                ? 'bg-zinc-900 text-white border-zinc-900 font-medium shadow-sm'
+                : 'bg-zinc-50 text-zinc-600 border-zinc-200 hover:border-zinc-300 hover:bg-zinc-100'
+            }`}
+          >
+            {item.label}
           </button>
         ))}
       </div>
@@ -103,18 +121,12 @@ export const ArticleInputSection: React.FC<ArticleInputSectionProps> = ({
         )}
       </div>
 
-      {/* Actions and Mode Switcher */}
-      <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4 pt-2 border-t border-outline-variant/60">
-        <button
-          type="button"
-          onClick={handleToggleMode}
-          className="font-label-code text-xs md:text-sm text-secondary hover:text-primary underline underline-offset-4 decoration-outline-variant hover:decoration-primary transition-all flex items-center space-x-1.5"
-        >
-          <span className="material-symbols-outlined text-[18px]">
-            {mode === 'url' ? 'article' : 'link'}
-          </span>
-          <span>{mode === 'url' ? 'Paste article text instead' : 'Switch to URL input mode'}</span>
-        </button>
+      {/* Submit Action */}
+      <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4 pt-2 border-t border-zinc-100">
+        <div className="text-xs text-zinc-500 flex items-center gap-1">
+          <span className="material-symbols-outlined text-[15px] text-emerald-600">verified</span>
+          <span>Automatic claim extraction and evidence corroboration</span>
+        </div>
 
         <AnalyzeButton
           onClick={handleSubmit}

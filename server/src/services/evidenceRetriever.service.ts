@@ -9,6 +9,7 @@ import {
   EvidenceRelevance,
   FreshnessCategory,
   RelevanceClassification,
+  EvidenceCluster,
 } from '../types/api.js';
 import { sourceRegistry } from './sourceRegistry.service.js';
 import { stanceEvaluatorService } from './stanceEvaluator.service.js';
@@ -123,7 +124,27 @@ export class EvidenceRetrieverService {
       queries.add(`what is the true shape of the ${claimTriple.entity}`);
     }
 
-    // 2c. Marital Status & Personal Status assertion (Requirement 14)
+    // 2c. Quantity / Membership Count assertion (e.g. Earth has six continents)
+    if (claimTriple && claimTriple.attribute === 'quantity_count') {
+      const subj = claimTriple.holder || claimTriple.entity || 'Earth';
+      const count = claimTriple.numericVal || 6;
+      const topic = claimTriple.property || 'continents';
+      const numWord = count === 6 ? 'six' : count === 7 ? 'seven' : count === 8 ? 'eight' : `${count}`;
+      queries.add(`${subj} ${numWord} ${topic}`);
+      queries.add(`number of ${topic} on ${subj}`);
+      queries.add(`how many ${topic} are there on ${subj}`);
+      queries.add(`${numWord} ${topic} model ${topic} of ${subj}`);
+      queries.add(`${topic} of ${subj} geography models`);
+    }
+
+    // 2d. Composition assertion (e.g. The Moon is made of cheese)
+    if (claimTriple && claimTriple.attribute === 'composition') {
+      queries.add(`${claimTriple.entity} composition scientific facts`);
+      queries.add(`what is the ${claimTriple.entity} made of geology`);
+      queries.add(`${claimTriple.entity} rocks minerals basalt silicate`);
+    }
+
+    // 2e. Marital Status & Personal Status assertion (Requirement 14)
     if (claimTriple && claimTriple.attribute === 'marital_status') {
       queries.add(`${claimTriple.entity} marital status`);
       queries.add(`${claimTriple.entity} wife spouse`);
@@ -238,21 +259,11 @@ export class EvidenceRetrieverService {
       queries.add(`current Prime Minister of India official`);
     }
 
-    // 8. General fallback query
-    if (queries.size === 0) {
-      const stopWords = new Set([
-        'is', 'are', 'was', 'were', 'the', 'a', 'an', 'of', 'and', 'that', 'with', 'from', 'at', 'in', 'on', 'to',
-      ]);
-      const words = cleaned.split(' ').filter(Boolean);
-      const coreWords = words.filter((w) => !stopWords.has(w.toLowerCase()) || w.length > 5);
-      if (coreWords.length >= 2) {
-        queries.add(coreWords.join(' '));
-      } else {
-        queries.add(cleaned);
-      }
-    }
+    // 10. Fact-Check & Verification Queries (Requirement 4 & 7)
+    queries.add(`${cleaned} fact check`);
+    queries.add(`${cleaned} verified`);
 
-    return Array.from(queries).slice(0, 4);
+    return Array.from(queries).slice(0, 6);
   }
 
   /**
@@ -268,6 +279,7 @@ export class EvidenceRetrieverService {
     const rawCandidates: RawCandidate[] = [];
     const seenUrls = new Set<string>();
     const seenTitles = new Set<string>();
+    let totalSourcesAttempted = 0;
 
     const addCandidate = (c: RawCandidate) => {
       const normTitle = c.title.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -289,13 +301,14 @@ export class EvidenceRetrieverService {
     const isInstitutional = INSTITUTIONAL_TRIGGERS.some((pat) => pat.test(claim.text));
 
     // -------------------------------------------------------------
-    // Execute Multi-Source Streams in Parallel with 3.5s per-task abort
+    // BATCH 1: Priority Fact-Checkers, Wire Services & Official Portals
     // -------------------------------------------------------------
-    const searchTasks: Promise<void>[] = [
+    const batch1Tasks: Promise<void>[] = [
       // 1. Google Fact Check API (Primary Query)
       googleFactCheckService
         .searchFactChecks(primaryQuery)
         .then((fcs) => {
+          totalSourcesAttempted += fcs.length;
           for (const fc of fcs) {
             addCandidate({
               title: fc.title,
@@ -310,9 +323,10 @@ export class EvidenceRetrieverService {
         })
         .catch(() => {}),
 
-      // 2. Authoritative Knowledge & Reference Repositories (Britannica, Wikipedia, National Geographic, ThoughtCo)
+      // 2. Authoritative Knowledge & Reference Repositories (Britannica, Wikipedia, National Geographic, NASA, etc.)
       this.fetchAuthoritativeReferences(claim, searchQueries)
         .then((krs) => {
+          totalSourcesAttempted += krs.length;
           for (const kr of krs) {
             addCandidate(kr);
           }
@@ -320,19 +334,21 @@ export class EvidenceRetrieverService {
         .catch(() => {}),
 
       // 3. Google News RSS Live Wires (Searches primary query)
-      this.searchGoogleNewsRss(primaryQuery, 4)
+      this.searchGoogleNewsRss(primaryQuery, 6)
         .then((nrs) => {
+          totalSourcesAttempted += nrs.length;
           for (const nr of nrs) {
             const regCheck = sourceRegistry.matchSource(nr.publisher) || sourceRegistry.matchSource(nr.url);
-            const tier = regCheck ? regCheck.credibilityTier : 3;
+            const tier = regCheck ? regCheck.credibilityTier : 2;
             addCandidate({ ...nr, priorityTier: tier, sourceType: 'news' });
           }
         })
         .catch(() => {}),
 
-      // 4. DuckDuckGo Web Search (Searches across generated queries)
-      this.searchWeb(primaryQuery, 3)
+      // 4. DuckDuckGo Web Search (Primary query across general index)
+      this.searchWeb(primaryQuery, 5)
         .then((wrs) => {
+          totalSourcesAttempted += wrs.length;
           for (const wr of wrs) {
             const regCheck = sourceRegistry.matchSource(wr.publisher) || sourceRegistry.matchSource(wr.url);
             const tier = regCheck ? regCheck.credibilityTier : 3;
@@ -342,10 +358,32 @@ export class EvidenceRetrieverService {
         .catch(() => {}),
     ];
 
+    await Promise.allSettled(batch1Tasks);
+
+    // -------------------------------------------------------------
+    // BATCH 2: Contradiction & Bidirectional Query Search (Requirement 4)
+    // -------------------------------------------------------------
+    const batch2Tasks: Promise<void>[] = [];
     if (searchQueries.length > 1) {
-      searchTasks.push(
-        this.searchWeb(searchQueries[1], 2)
+      batch2Tasks.push(
+        this.searchWeb(searchQueries[1], 4)
           .then((wrs) => {
+            totalSourcesAttempted += wrs.length;
+            for (const wr of wrs) {
+              const regCheck = sourceRegistry.matchSource(wr.publisher) || sourceRegistry.matchSource(wr.url);
+              const tier = regCheck ? regCheck.credibilityTier : 3;
+              addCandidate({ ...wr, priorityTier: tier });
+            }
+          })
+          .catch(() => {})
+      );
+    }
+
+    if (searchQueries.length > 2) {
+      batch2Tasks.push(
+        this.searchWeb(searchQueries[2], 4)
+          .then((wrs) => {
+            totalSourcesAttempted += wrs.length;
             for (const wr of wrs) {
               const regCheck = sourceRegistry.matchSource(wr.publisher) || sourceRegistry.matchSource(wr.url);
               const tier = regCheck ? regCheck.credibilityTier : 3;
@@ -357,10 +395,11 @@ export class EvidenceRetrieverService {
     }
 
     if (isInstitutional) {
-      const govQuery = `${primaryQuery} (site:gov.in OR site:nic.in OR site:pib.gov.in OR site:rbi.org.in OR site:who.int OR site:un.org)`;
-      searchTasks.push(
-        this.searchWeb(govQuery, 2)
+      const govQuery = `${primaryQuery} (site:gov.in OR site:nic.in OR site:pib.gov.in OR site:rbi.org.in OR site:who.int OR site:un.org OR site:sci.gov.in)`;
+      batch2Tasks.push(
+        this.searchWeb(govQuery, 4)
           .then((grs) => {
+            totalSourcesAttempted += grs.length;
             for (const g of grs) {
               addCandidate({ ...g, priorityTier: 1, sourceType: 'official' });
             }
@@ -369,12 +408,29 @@ export class EvidenceRetrieverService {
       );
     }
 
-    // Await all parallel tasks
-    await Promise.allSettled(searchTasks);
+    if (batch2Tasks.length > 0) {
+      await Promise.allSettled(batch2Tasks);
+    }
 
-    // Rank candidates by priority tier: Tier 1 (Official) > Tier 2 (Fact-Check) > Tier 3 (Reputable News) > Tier 4 (Reference) > Tier 5 (Other)
+    // -------------------------------------------------------------
+    // BATCH 3: Targeted Fact-Check Platforms (Alt News, BOOM, PIB, Snopes, etc.)
+    // -------------------------------------------------------------
+    if (rawCandidates.length < 10 && searchQueries.length > 3) {
+      const factCheckQuery = `${searchQueries[3]} (site:boomlive.in OR site:altnews.in OR site:factchecker.in OR site:snopes.com OR site:factcheck.org OR site:pib.gov.in)`;
+      await this.searchWeb(factCheckQuery, 4)
+        .then((fcrs) => {
+          totalSourcesAttempted += fcrs.length;
+          for (const fc of fcrs) {
+            addCandidate({ ...fc, priorityTier: 2, sourceType: 'fact_check' });
+          }
+        })
+        .catch(() => {});
+    }
+
+    // Rank candidates by priority tier: Tier 1 (Official) > Tier 2 (Fact-Check / Wires) > Tier 3 (Reputable Media) > Tier 4 (Reference) > Tier 5 (Other)
     rawCandidates.sort((a, b) => a.priorityTier - b.priorityTier);
-    const prioritizedCandidates = rawCandidates.slice(0, 6);
+    // Target 10-20 high-quality evidence candidates (Requirement 6)
+    const prioritizedCandidates = rawCandidates.slice(0, 16);
 
     // -------------------------------------------------------------
     // Concurrent Claim-Level Stance Evaluation
@@ -398,7 +454,7 @@ export class EvidenceRetrieverService {
         isTimeSensitive
       );
 
-      const relevanceMultiplier = stance.relevance === 'direct' ? 1.0 : stance.relevance === 'related' ? 0.2 : 0.0;
+      const relevanceMultiplier = stance.relevance === 'direct' ? 1.0 : stance.relevance === 'related' ? 0.35 : 0.0;
       const finalContribution = Math.round(credScore * relevanceMultiplier);
 
       const pubLower = resolvedName.toLowerCase();
@@ -488,7 +544,65 @@ export class EvidenceRetrieverService {
     // Populate claim-level independent consensus metrics
     this.calculateClaimConsensusMetrics(claim, evidenceList);
 
-    return evidenceList.slice(0, 4);
+    // Return 10-16 high-quality candidate evidence items
+    return evidenceList.slice(0, 16);
+  }
+
+  /**
+   * Groups syndicated and duplicate evidence items into independent evidence clusters
+   */
+  public clusterEvidence(evidenceList: RetrievedEvidenceItem[]): EvidenceCluster[] {
+    const clusterMap = new Map<string, RetrievedEvidenceItem[]>();
+
+    for (const ev of evidenceList) {
+      const domain = (ev.domain || ev.sourceName || 'unknown').toLowerCase().replace(/^www\./, '');
+      const text = (ev.evidenceText || ev.snippet || '').toLowerCase();
+
+      // Check if text is syndicated from a known wire
+      let clusterKey = domain;
+      if (text.includes('(pti)') || text.includes('press trust of india') || text.includes('ptinews')) {
+        clusterKey = 'wire:pti';
+      } else if (text.includes('(reuters)') || text.includes('reuters.com')) {
+        clusterKey = 'wire:reuters';
+      } else if (text.includes('(ap)') || text.includes('associated press') || text.includes('apnews')) {
+        clusterKey = 'wire:ap';
+      } else if (text.includes('(ani)') || text.includes('asian news international')) {
+        clusterKey = 'wire:ani';
+      } else if (text.includes('(afp)') || text.includes('agence france-presse')) {
+        clusterKey = 'wire:afp';
+      }
+
+      if (!clusterMap.has(clusterKey)) {
+        clusterMap.set(clusterKey, []);
+      }
+      clusterMap.get(clusterKey)!.push(ev);
+    }
+
+    const clusters: EvidenceCluster[] = [];
+    let clusterIdx = 1;
+
+    for (const [key, items] of clusterMap.entries()) {
+      const supCount = items.filter((i) => i.relation === 'supports' || i.relationToClaim === 'SUPPORTS').length;
+      const conCount = items.filter((i) => i.relation === 'contradicts' || i.relationToClaim === 'CONTRADICTS').length;
+      const dominantStance: EvidenceRelation =
+        conCount > supCount ? 'contradicts' : supCount > conCount ? 'supports' : 'unclear';
+
+      const maxQuality = Math.max(...items.map((i) => i.sourceReliability || 50));
+      const primaryItem = items[0];
+
+      clusters.push({
+        clusterId: `cluster-${clusterIdx++}`,
+        primaryDomain: key.startsWith('wire:') ? key.replace('wire:', '') : primaryItem.domain || primaryItem.sourceName,
+        origin: key.startsWith('wire:') ? key.replace('wire:', '').toUpperCase() : primaryItem.sourceName,
+        sourceArticles: items,
+        stance: dominantStance,
+        quality: maxQuality,
+        independenceScore: 1.0,
+        representativeSnippet: primaryItem.evidenceText || primaryItem.snippet || primaryItem.title,
+      });
+    }
+
+    return clusters;
   }
 
   /**

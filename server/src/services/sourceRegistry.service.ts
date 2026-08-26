@@ -10,9 +10,14 @@ export interface NormalizedSourceRecord {
   category: string;
   credibilityTier: 1 | 2 | 3 | 4 | 5;
   credibilityWeight: number;
+  country?: string;
+  language?: string;
+  factCheckCapability?: boolean;
+  searchMethod?: 'SITE_SEARCH' | 'API' | 'RSS' | 'WEB';
   isOfficial: boolean;
   isFactChecker: boolean;
   isWireService: boolean;
+  enabled?: boolean;
 }
 
 export interface SourceEvaluation {
@@ -56,22 +61,28 @@ export class SourceRegistryService {
 
         this.sources = parsed.map((item: any) => {
           const isGov = item.domain && (item.domain.endsWith('.gov') || item.domain.endsWith('.gov.in') || item.domain.endsWith('.nic.in'));
-          let tier: 1 | 2 | 3 | 4 | 5 = item.credibilityTier || 4;
-          if (item.isOfficial || isGov) tier = 1;
-          else if (item.isFactChecker) tier = 3;
-          else if (item.isWireService) tier = 2;
+          let tier: 1 | 2 | 3 | 4 | 5 = item.sourceTier || item.credibilityTier || 4;
+          if (item.isOfficial || isGov || item.category === 'OFFICIAL_FACT_CHECK') tier = 1;
+          else if (item.isWireService || item.category === 'WIRE_SERVICE') tier = 2;
+          else if (item.isFactChecker || item.category === 'FACT_CHECKER') tier = 3;
+          else if (item.category === 'REFERENCE') tier = 4;
           const tierDef = SOURCE_TIER_CONFIG[tier] || SOURCE_TIER_CONFIG[5];
 
           return {
             name: item.name,
             url: item.url,
             domain: this.normalizeDomain(item.domain || item.url),
-            category: item.category || 'Verified Media',
+            category: item.category || 'NEWS',
             credibilityTier: tier,
             credibilityWeight: item.credibilityWeight || tierDef.baseWeight,
-            isOfficial: Boolean(item.isOfficial),
-            isFactChecker: Boolean(item.isFactChecker),
-            isWireService: Boolean(item.isWireService),
+            country: item.country || 'India',
+            language: item.language || 'English',
+            factCheckCapability: Boolean(item.factCheckCapability ?? item.isFactChecker),
+            searchMethod: item.searchMethod || 'SITE_SEARCH',
+            isOfficial: Boolean(item.isOfficial || isGov),
+            isFactChecker: Boolean(item.isFactChecker || item.category === 'FACT_CHECKER' || item.category === 'OFFICIAL_FACT_CHECK'),
+            isWireService: Boolean(item.isWireService || item.category === 'WIRE_SERVICE'),
+            enabled: item.enabled !== false,
           };
         });
 
@@ -92,6 +103,34 @@ export class SourceRegistryService {
     } catch (err) {
       console.error('[SourceRegistryService] Failed to load source registry:', err);
     }
+  }
+
+  /**
+   * Returns all loaded sources in the registry
+   */
+  public getAllSources(): NormalizedSourceRecord[] {
+    return this.sources;
+  }
+
+  /**
+   * Returns all dedicated fact-checking sources
+   */
+  public getFactCheckers(): NormalizedSourceRecord[] {
+    return this.sources.filter((s) => s.isFactChecker && s.enabled !== false);
+  }
+
+  /**
+   * Returns all major wire services (Reuters, AP, PTI, ANI, AFP)
+   */
+  public getWireServices(): NormalizedSourceRecord[] {
+    return this.sources.filter((s) => s.isWireService && s.enabled !== false);
+  }
+
+  /**
+   * Returns high-priority tier 1 & tier 2 sources for first-pass verification
+   */
+  public getPrioritySources(maxTier: 1 | 2 | 3 = 2): NormalizedSourceRecord[] {
+    return this.sources.filter((s) => s.credibilityTier <= maxTier && s.enabled !== false);
   }
 
   /**
@@ -282,13 +321,6 @@ export class SourceRegistryService {
       badge: SOURCE_TIER_CONFIG[5].badge,
       isRegistered: false,
     };
-  }
-
-  /**
-   * Returns all loaded source records
-   */
-  public getAllSources(): NormalizedSourceRecord[] {
-    return this.sources;
   }
 }
 

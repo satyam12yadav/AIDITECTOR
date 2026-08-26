@@ -8,6 +8,7 @@ export interface EnvConfig {
   PORT: number;
   NODE_ENV: 'development' | 'production' | 'test';
   CORS_ORIGIN: string[];
+  EXA_API_KEY: string;
 }
 
 const parseCorsOrigins = (rawOrigins?: string): string[] => {
@@ -21,4 +22,5 @@ export const env: EnvConfig = {
   PORT: parseInt(process.env.PORT || '5001', 10),
   NODE_ENV: (process.env.NODE_ENV as EnvConfig['NODE_ENV']) || 'development',
   CORS_ORIGIN: parseCorsOrigins(process.env.CORS_ORIGIN),
+  EXA_API_KEY: process.env.EXA_API_KEY || '',
 };

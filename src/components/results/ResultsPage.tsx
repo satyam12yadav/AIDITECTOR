@@ -42,57 +42,57 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({
   return (
     <div className="flex-1 w-full px-4 md:px-margin-desktop max-w-container-max mx-auto py-8">
       {/* Top Banner Header */}
-      <div className="mb-8 border-b border-outline-variant pb-6 flex flex-col md:flex-row justify-between md:items-end gap-4">
+      <div className="mb-8 border-b border-zinc-200 pb-6 flex flex-col md:flex-row justify-between md:items-end gap-4">
         <div>
           <div className="flex items-center gap-2 mb-2">
-            <span className="font-label-caps text-xs text-outline uppercase tracking-wider font-bold">
-              VERITAS FORENSIC DOSSIER
+            <span className="text-xs text-zinc-400 uppercase tracking-wider font-semibold">
+              FACT-CHECK SUMMARY
             </span>
-            <span className="text-outline">·</span>
-            <span className="font-mono text-xs text-primary font-semibold">{result.id}</span>
+            <span className="text-zinc-300">·</span>
+            <span className="font-mono text-xs text-zinc-600">{result.id}</span>
           </div>
 
-          <h2 className="font-headline-lg-mobile lg:font-headline-lg text-2xl md:text-3xl text-primary font-bold tracking-tight">
-            Analysis Report: {result.id}
+          <h2 className="text-2xl md:text-3xl text-zinc-900 font-bold tracking-tight">
+            {result.title ? `"${result.title}"` : `Verification Report`}
           </h2>
 
           <div className="flex flex-wrap items-center gap-2 md:gap-3 mt-3">
             {result.sourceUrl && (
               <span
-                className={`font-label-caps text-xs font-bold py-1 px-2.5 rounded border flex items-center gap-1 ${
+                className={`text-xs font-semibold py-1 px-2.5 rounded-lg border flex items-center gap-1 ${
                   result.isPartial
-                    ? 'bg-[#fffbeb] text-[#92400e] border-[#fde68a]'
-                    : 'bg-[#ecfdf5] text-[#065f46] border-[#a7f3d0]'
+                    ? 'bg-amber-50 text-amber-800 border-amber-200'
+                    : 'bg-emerald-50 text-emerald-800 border-emerald-200'
                 }`}
               >
                 <span className="material-symbols-outlined text-[14px]">
                   {result.isPartial ? 'warning' : 'check_circle'}
                 </span>
-                {result.isPartial ? 'ARTICLE PARTIALLY EXTRACTED ⚠' : 'ARTICLE EXTRACTED ✓'}
+                {result.isPartial ? 'Partial Extraction' : 'Verified URL'}
               </span>
             )}
 
             {result.publisher && (
-              <span className="font-label-code text-xs text-on-surface-variant bg-surface-container py-1 px-2.5 rounded border border-outline-variant flex items-center gap-1">
-                <span className="material-symbols-outlined text-[14px] text-outline">newspaper</span>
+              <span className="text-xs text-zinc-600 bg-zinc-100 py-1 px-2.5 rounded-lg border border-zinc-200 flex items-center gap-1 font-medium">
+                <span className="material-symbols-outlined text-[14px] text-zinc-400">newspaper</span>
                 {result.publisher}
               </span>
             )}
 
             {result.publishedAt && (
-              <span className="font-label-code text-xs text-on-surface-variant bg-surface-container py-1 px-2.5 rounded border border-outline-variant flex items-center gap-1">
-                <span className="material-symbols-outlined text-[14px] text-outline">calendar_today</span>
+              <span className="text-xs text-zinc-600 bg-zinc-100 py-1 px-2.5 rounded-lg border border-zinc-200 flex items-center gap-1 font-medium">
+                <span className="material-symbols-outlined text-[14px] text-zinc-400">calendar_today</span>
                 Published: {result.publishedAt}
               </span>
             )}
 
-            <span className="font-label-code text-xs text-on-surface-variant bg-surface-container py-1 px-2.5 rounded border border-outline-variant">
-              CLAIMS: {result.totalClaimsIdentified}
+            <span className="text-xs text-zinc-700 bg-zinc-100 py-1 px-2.5 rounded-lg border border-zinc-200 font-semibold">
+              {result.totalClaimsIdentified} {result.totalClaimsIdentified === 1 ? 'Claim' : 'Claims'} Evaluated
             </span>
           </div>
 
           {result.extractionWarning && (
-            <div className="mt-3 bg-[#fffbeb] border border-[#fde68a] text-[#92400e] px-3.5 py-2 rounded text-xs font-body-sm flex items-center gap-2">
+            <div className="mt-3 bg-amber-50 border border-amber-200 text-amber-800 px-3.5 py-2 rounded-lg text-xs flex items-center gap-2">
               <span className="material-symbols-outlined text-[16px] shrink-0">info</span>
               <span>{result.extractionWarning}</span>
             </div>
@@ -103,7 +103,7 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({
         <div className="flex items-center gap-2">
           <button
             onClick={onNewAnalysis}
-            className="px-4 py-2 border border-outline-variant rounded font-label-caps text-xs text-primary hover:bg-surface-variant transition-colors flex items-center gap-1.5 font-bold uppercase tracking-wider"
+            className="px-4 py-2 border border-zinc-200 bg-white rounded-lg text-xs text-zinc-800 hover:bg-zinc-50 transition-all font-semibold shadow-sm flex items-center gap-1.5"
           >
             <span className="material-symbols-outlined text-[16px]">add</span>
             New Verification
