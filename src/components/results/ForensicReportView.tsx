@@ -228,10 +228,13 @@ export const ForensicReportView: React.FC<ForensicReportViewProps> = ({ result }
                         <span className="font-label-code text-xs font-bold text-outline">
                           CLAIM {idx + 1} ({claim.claimId})
                         </span>
+                        <span className="font-label-code text-[11px] bg-white px-2 py-0.5 rounded border border-outline-variant font-bold text-primary uppercase tracking-wider">
+                          Type: {claim.classification ? claim.classification.replace(/_/g, ' ') : 'Objective Fact'}
+                        </span>
                         <span className="font-label-code text-[11px] bg-white px-2 py-0.5 rounded border border-outline-variant font-bold text-primary">
                           Importance: {claim.importance !== undefined ? (claim.importance >= 0.7 ? 'HIGH' : claim.importance >= 0.4 ? 'MEDIUM' : 'LOW') : 'MEDIUM'}
                         </span>
-                        {claim.claimScore !== undefined && (
+                        {claim.claimScore !== undefined ? (
                           <span
                             className={`font-label-code text-[11px] px-2 py-0.5 rounded border font-bold ${
                               claim.claimScore >= 80
@@ -243,8 +246,12 @@ export const ForensicReportView: React.FC<ForensicReportViewProps> = ({ result }
                           >
                             Score: {claim.claimScore} / 100
                           </span>
-                        )}
-                        {claim.confidence !== undefined && (
+                        ) : claim.isVerifiable === false ? (
+                          <span className="font-label-code text-[11px] bg-white px-2 py-0.5 rounded border border-outline-variant text-on-surface-variant font-bold">
+                            Score: N/A
+                          </span>
+                        ) : null}
+                        {claim.confidence !== undefined && claim.isVerifiable !== false && (
                           <span className="font-label-code text-[11px] bg-white px-2 py-0.5 rounded border border-outline-variant text-on-surface-variant font-semibold">
                             Confidence: {claim.confidence}%
                           </span>
@@ -257,10 +264,12 @@ export const ForensicReportView: React.FC<ForensicReportViewProps> = ({ result }
                             ? 'bg-red-100 text-red-900 border-red-300'
                             : isSupported
                             ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                            : claim.isVerifiable === false
+                            ? 'bg-purple-100 text-purple-900 border-purple-300'
                             : 'bg-surface-container text-on-surface-variant border-outline-variant'
                         }`}
                       >
-                        VERDICT: {isContradicted ? 'CONTRADICTED' : isSupported ? 'SUPPORTED' : 'UNCLEAR'}
+                        VERDICT: {claim.isVerifiable === false ? (claim.statusLabel || 'NOT OBJECTIVELY VERIFIABLE').toUpperCase() : isContradicted ? 'CONTRADICTED' : isSupported ? 'SUPPORTED' : 'UNCLEAR'}
                       </span>
                     </div>
 

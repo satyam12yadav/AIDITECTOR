@@ -1,4 +1,4 @@
-import { ExtractedClaim, ClaimType } from '../types/api.js';
+import { ExtractedClaim, ClaimType, ClaimClassification } from '../types/api.js';
 
 const OPINION_MARKERS = [
   /\b(in my opinion|i believe|i think|in our view|we feel|arguably|personally|to my mind|it seems to me)\b/i,
@@ -24,7 +24,7 @@ const POLITICAL_REGEX =
   /\b(government|ministry|minister|prime minister|president|parliament|election|bjp|congress|nda|policy|bill|act|supreme court|high court)\b/i;
 
 const SCIENTIFIC_REGEX =
-  /\b(space|isro|nasa|climate|temperature|disease|vaccine|organism|species|ocean|orbit|atmosphere|quantum|physics|chemistry)\b/i;
+  /\b(space|isro|nasa|climate|temperature|disease|vaccine|organism|species|ocean|orbit|atmosphere|quantum|physics|chemistry|planet|earth|flat|round|spherical|sun|moon)\b/i;
 
 const ATTRIBUTED_REGEX =
   /\b(stated|announced|confirmed|reported|claimed|discovered|published|found that|demonstrated|according to|concluded|officials said)\b/i;
@@ -32,6 +32,119 @@ const ATTRIBUTED_REGEX =
 const HISTORICAL_REGEX = /\b(in (19\d{2}|20\d{2})|during the|historical|founded in|since (19\d{2}|20\d{2}))\b/i;
 
 export class ClaimExtractorService {
+  /**
+   * Classifies a statement into one of the 9 standard Claim Classifications (Requirement 1):
+   * OBJECTIVE_FACT, CURRENT_EVENT, HISTORICAL_FACT, NUMERICAL_FACT, COMPARATIVE_FACT,
+   * PREDICTION, OPINION, BELIEF_OR_THEOLOGICAL, UNVERIFIABLE
+   */
+  public classifyClaimClassification(statement: string): {
+    classification: ClaimClassification;
+    isVerifiable: boolean;
+    explanation?: string;
+  } {
+    const clean = statement.trim();
+    const lower = clean.toLowerCase();
+
+    // 1. Belief or Theological Claim (Requirement 8)
+    // Generic theological / religious deity assertions:
+    // e.g. "Ram is God", "Jesus is the Son of God", "Allah is the creator", "Vishnu is a supreme deity"
+    const theologicalPattern =
+      /\b(is god|is a god|is deity|is a deity|is lord|is the lord|is divine|is supreme deity|is the son of god|is prophet|is messenger of god|is reincarnation of|is avatar of|incarnation of god|is holy|is sacred|holy spirit|supreme creator|almighty|divine being|afterlife exists|reaches moksha|reaches nirvana|goes to heaven|goes to hell|destined for heaven|original sin)\b/i;
+
+    if (
+      theologicalPattern.test(clean) ||
+      (/\b(god|allah|vishnu|shiva|brahma|jesus|yahweh|krishna|rama|ram)\b/i.test(lower) &&
+        /\b(is|was)\s+(god|lord|creator|divine|almighty|supreme|omnipresent|omniscient)\b/i.test(lower))
+    ) {
+      return {
+        classification: 'BELIEF_OR_THEOLOGICAL',
+        isVerifiable: false,
+        explanation:
+          'This is a religious or theological claim rather than an objectively testable factual claim. Different religious traditions may hold different beliefs about it.',
+      };
+    }
+
+    // 2. Future Prediction (Requirement 10)
+    // e.g. "India will win the next World Cup", "The economy will collapse in 2027", "Humans will land on Mars by 2030"
+    const predictionPattern =
+      /\b(will win|will lose|will happen|will occur|will be|will become|will reach|will drop|will fall|will rise|will collapse|will crash|is predicted to|is expected to|is going to|forecasts that|predicts that|in the next\s+\w+|next world cup|by 203\d|by 204\d|by 205\d|in the future)\b/i;
+
+    if (predictionPattern.test(clean) && !/\b(in (19\d{2}|20[0-2]\d))\b/i.test(clean)) {
+      return {
+        classification: 'PREDICTION',
+        isVerifiable: false,
+        explanation: 'Future outcomes cannot currently be verified as true or false.',
+      };
+    }
+
+    // 3. Subjective Opinion / Aesthetic Judgment (Requirement 9)
+    // e.g. "This movie is terrible", "Ram is the greatest character ever", "Pizza is the best food in the world"
+    const opinionPattern =
+      /\b(is terrible|is horrible|is awesome|is magnificent|is wonderful|is beautiful|is ugly|is the greatest\s+\w+\s+ever|is the best\s+\w+\s+ever|is the worst\s+\w+\s+ever|tastes (terrible|delicious|disgusting|amazing)|is boring|is overrated|is underrated|in my opinion|i believe that|i think that|personally speaking)\b/i;
+
+    if (opinionPattern.test(clean)) {
+      return {
+        classification: 'OPINION',
+        isVerifiable: false,
+        explanation: 'Subjective opinion or personal aesthetic judgment that cannot be empirically verified.',
+      };
+    }
+
+    // 4. Comparative Fact
+    if (
+      /\b(larger than|smaller than|bigger than|hotter than|colder than|faster than|slower than|more than|less than|highest|lowest|largest|smallest|biggest|deepest|longest|tallest|most populous|least populous)\b/i.test(
+        clean
+      )
+    ) {
+      return {
+        classification: 'COMPARATIVE_FACT',
+        isVerifiable: true,
+      };
+    }
+
+    // 5. Numerical Fact
+    if (
+      STATISTICAL_REGEX.test(clean) ||
+      /\b(boils at|freezes at|melts at|\d+\s*(°\s*c|celsius|km|miles|meters|kg|tons))\b/i.test(clean)
+    ) {
+      return {
+        classification: 'NUMERICAL_FACT',
+        isVerifiable: true,
+      };
+    }
+
+    // 6. Current Event (Time-sensitive leadership, elections, tournament winner in 2026/current)
+    if (
+      /\b(now|currently|current|latest|recently|today|this week|2026|winner|captain|president|prime minister|chief minister)\b/i.test(
+        clean
+      )
+    ) {
+      return {
+        classification: 'CURRENT_EVENT',
+        isVerifiable: true,
+      };
+    }
+
+    // 7. Historical Fact
+    if (
+      HISTORICAL_REGEX.test(clean) ||
+      /\b(in (19\d{2}|200\d|201\d|202[0-5])|century|ancient|founded in|built in|during the war|independence)\b/i.test(
+        clean
+      )
+    ) {
+      return {
+        classification: 'HISTORICAL_FACT',
+        isVerifiable: true,
+      };
+    }
+
+    // 8. Objective Fact (General factual, geographic, scientific, shape assertions)
+    return {
+      classification: 'OBJECTIVE_FACT',
+      isVerifiable: true,
+    };
+  }
+
   /**
    * Decomposes article text into multiple verifiable atomic factual claims
    */
@@ -58,21 +171,18 @@ export class ClaimExtractorService {
         const sentence = rawSentence.trim();
 
         // 1. Basic length & boilerplate filter
-        if (sentence.length < 10) continue;
+        if (sentence.length < 5) continue;
         if (this.isAdvertisementOrBoilerplate(sentence)) continue;
 
-        // 2. Ignore purely subjective or opinion statements
-        if (this.isOpinionOrRhetoric(sentence)) continue;
-
-        // 3. Break compound statements into atomic assertions if distinct facts exist
+        // 2. Break compound statements into atomic assertions if distinct facts exist
         const atomicStatements = this.decomposeCompoundSentence(sentence);
 
         for (const statement of atomicStatements) {
           const cleanStmt = statement.trim();
-          if (cleanStmt.length < 10) continue;
-          if (this.isOpinionOrRhetoric(cleanStmt)) continue;
+          if (cleanStmt.length < 5) continue;
 
           const claimType = this.classifyClaimType(cleanStmt);
+          const classInfo = this.classifyClaimClassification(cleanStmt);
           const importance = this.calculateImportance(cleanStmt, pIndex, paragraphs.length);
 
           extractedClaims.push({
@@ -81,6 +191,9 @@ export class ClaimExtractorService {
             importance,
             claim_type: claimType,
             claimType: claimType,
+            classification: classInfo.classification,
+            isVerifiable: classInfo.isVerifiable,
+            notVerifiableReason: classInfo.explanation,
           });
 
           // Cap max claims per article to top 6

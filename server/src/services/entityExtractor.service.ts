@@ -5,6 +5,7 @@ export interface ClaimTriple {
   attribute:
     | 'location'
     | 'capital'
+    | 'shape'
     | 'superlative'
     | 'composition'
     | 'numerical'
@@ -398,6 +399,21 @@ export class EntityExtractorService {
         entity: rawEntity,
         attribute: 'capital',
         claimValue: capVal,
+        isNegated,
+      };
+    }
+
+    // 3b. Shape & Geometric Form assertion (Requirement 3, 4, 7): e.g. "The Earth is flat", "The Earth is round", "The Earth is spherical", "The Earth is an oblate spheroid"
+    const shapeMatch = clean.match(/^(?:the\s+)?([a-zA-Z\s]+?)\s+(?:is|has|is shaped like|has the shape of)\s+(?:a\s+|an\s+)?(flat|round|spherical|sphere|oblate spheroid|ellipsoid|geoid|disc|disc-shaped|cube|cubical|cylinder|cylindrical|pyramid|pyramidal|donut-shaped|torus)[.]?$/i);
+    if (shapeMatch) {
+      const subject = shapeMatch[1].trim().replace(/^(the|a|an)\s+/i, '');
+      const shapeVal = shapeMatch[2].trim().toLowerCase();
+      return {
+        entity: subject,
+        attribute: 'shape',
+        holder: subject,
+        claimValue: shapeVal,
+        property: 'shape',
         isNegated,
       };
     }

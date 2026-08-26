@@ -47,6 +47,9 @@ export interface ClaimItem {
   statusLabel: string;
   importance?: number;
   claimType?: string;
+  classification?: string;
+  isVerifiable?: boolean;
+  notVerifiableReason?: string;
   flagReason?: string;
   claimScore?: number;
   confidence?: number;

@@ -36,13 +36,22 @@ export const ClaimCard: React.FC<ClaimCardProps> = ({
       break;
     case 'unverified':
     default:
-      badgeClasses = 'bg-surface-container-highest text-on-surface-variant border-outline-variant';
-      badgeIcon = 'help';
-      cleanStatusLabel = 'Unverified';
+      if (claim.isVerifiable === false) {
+        badgeClasses = 'bg-purple-50 text-purple-900 border-purple-200';
+        badgeIcon = 'info';
+        cleanStatusLabel = claim.statusLabel || 'Not Objectively Verifiable';
+      } else {
+        badgeClasses = 'bg-surface-container-highest text-on-surface-variant border-outline-variant';
+        badgeIcon = 'help';
+        cleanStatusLabel = 'Unverified';
+      }
       break;
   }
 
   const importanceValue = claim.importance !== undefined ? Math.round(claim.importance * 100) : null;
+  const formattedClassLabel = claim.classification
+    ? claim.classification.replace(/_/g, ' ')
+    : 'Objective Fact';
 
   return (
     <div className="bg-surface-container-lowest border border-outline-variant rounded-lg shadow-ambient overflow-hidden transition-all">
@@ -52,6 +61,12 @@ export const ClaimCard: React.FC<ClaimCardProps> = ({
           <div className="flex flex-wrap items-center gap-2 mb-2">
             <span className="font-label-code text-xs text-outline tracking-wider font-semibold">
               CLAIM {claim.claimId}
+            </span>
+
+            {/* Claim Type Badge (Requirement 12) */}
+            <span className="font-label-code text-[11px] bg-surface-container-high text-primary font-bold px-2 py-0.5 rounded border border-outline-variant flex items-center gap-1 uppercase tracking-wider">
+              <span className="material-symbols-outlined text-[13px]">category</span>
+              {formattedClassLabel}
             </span>
 
             {importanceValue !== null && (
@@ -67,7 +82,7 @@ export const ClaimCard: React.FC<ClaimCardProps> = ({
               </span>
             )}
 
-            {claim.claimScore !== undefined && (
+            {claim.claimScore !== undefined ? (
               <span
                 className={`font-label-code text-[11px] font-bold px-2 py-0.5 rounded border flex items-center gap-1 ${
                   claim.claimScore >= 80
@@ -79,9 +94,13 @@ export const ClaimCard: React.FC<ClaimCardProps> = ({
               >
                 Score: {claim.claimScore}/100
               </span>
-            )}
+            ) : claim.isVerifiable === false ? (
+              <span className="font-label-code text-[11px] font-bold px-2 py-0.5 rounded border bg-surface-container text-on-surface-variant border-outline-variant">
+                Score: N/A
+              </span>
+            ) : null}
 
-            {claim.confidence !== undefined && (
+            {claim.confidence !== undefined && claim.isVerifiable !== false && (
               <span className="font-label-code text-[11px] bg-surface-container text-on-surface-variant font-semibold px-2 py-0.5 rounded border border-outline-variant flex items-center gap-1">
                 <span className="material-symbols-outlined text-[12px] text-primary">verified_user</span>
                 Conf: {claim.confidence}%

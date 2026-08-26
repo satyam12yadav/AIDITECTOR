@@ -115,6 +115,14 @@ export class EvidenceRetrieverService {
       queries.add(`${claimTriple.entity} capital`);
     }
 
+    // 2b. Shape & Geometric Form assertion (Bidirectional Search - Requirement 2, 3, 4)
+    if (claimTriple && claimTriple.attribute === 'shape') {
+      queries.add(`shape of ${claimTriple.entity} scientific evidence`);
+      queries.add(`${claimTriple.entity} shape spherical NASA`);
+      queries.add(`${claimTriple.entity} ${claimTriple.claimValue}`);
+      queries.add(`what is the true shape of the ${claimTriple.entity}`);
+    }
+
     // 3. Astronomical / Scientific comparison or constant assertion
     if (claimTriple && (claimTriple.attribute === 'scientific' || claimTriple.attribute === 'comparison')) {
       if (claimTriple.claimValue.includes('orbits the sun')) {

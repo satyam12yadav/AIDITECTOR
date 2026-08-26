@@ -39,6 +39,17 @@ export interface ClaimForensicEvaluation {
   limitations: string[];
 }
 
+export type ClaimClassification =
+  | 'OBJECTIVE_FACT'
+  | 'CURRENT_EVENT'
+  | 'HISTORICAL_FACT'
+  | 'NUMERICAL_FACT'
+  | 'COMPARATIVE_FACT'
+  | 'PREDICTION'
+  | 'OPINION'
+  | 'BELIEF_OR_THEOLOGICAL'
+  | 'UNVERIFIABLE';
+
 export type ClaimType =
   | 'factual'
   | 'numerical'
@@ -71,6 +82,9 @@ export interface ExtractedClaim {
   importance: number; // 0.1 to 1.0 (or 10 to 100)
   claim_type: ClaimType | string;
   claimType?: ClaimType | string;
+  classification?: ClaimClassification;
+  isVerifiable?: boolean;
+  notVerifiableReason?: string;
   isTimeSensitive?: boolean;
   entity?: string;
   attribute?: string;

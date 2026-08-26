@@ -574,13 +574,80 @@ Return STRICT JSON only:
           relationToClaim: 'SUPPORTS',
           relevance: 'direct',
           confidence: 98,
-          reasoning: "Authoritative records confirm New Delhi is the capital of India.",
-          keyEvidence: "New Delhi serves as the capital of the Republic of India.",
+          reasoning: "Capital city verified: New Delhi is the capital of India.",
+          keyEvidence: "New Delhi is the capital of India.",
           stanceScore: 1,
           relevanceScore: 1.0,
-          explanation: "Direct confirmation of national capital.",
+          explanation: "Capital city verified: New Delhi is the capital of India.",
           temporalRelevance: 'TEMPORALLY_RELEVANT',
         };
+      }
+    }
+
+    // EAV Check: Shape & Geometric Form (Requirement 3, 4, 7: e.g. "Earth is flat", "Earth is round", "Earth is spherical")
+    if (claimTriple && claimTriple.attribute === 'shape') {
+      const claimSubject = (claimTriple.holder || claimTriple.entity).toLowerCase();
+      const claimedShape = claimTriple.claimValue.toLowerCase();
+
+      const evHasSpherical =
+        /\b(spherical|sphere|round|oblate spheroid|ellipsoid|geoid|globe|circular)\b/i.test(combined);
+      const evHasFlat = /\b(flat|disc|disc-shaped|plane)\b/i.test(combined);
+
+      const discussesSubject =
+        combined.includes(claimSubject) ||
+        (claimSubject.includes('earth') && (combined.includes('earth') || combined.includes('planet') || combined.includes('geodesy') || combined.includes('nasa')));
+
+      if (discussesSubject) {
+        const isClaimedFlat = ['flat', 'disc', 'disc-shaped', 'plane'].includes(claimedShape);
+        const isClaimedSpherical = ['round', 'spherical', 'sphere', 'oblate spheroid', 'ellipsoid', 'geoid', 'globe'].includes(claimedShape);
+
+        // Case A: Claim asserts FLAT while evidence establishes SPHERICAL (Requirement 3 & 7)
+        if (isClaimedFlat && evHasSpherical) {
+          return {
+            relation: 'contradicts',
+            relationToClaim: 'CONTRADICTS',
+            relevance: 'direct',
+            confidence: 99,
+            reasoning: `Shape contradiction: Established scientific geodesy, satellite imagery, and space observations confirm the ${claimTriple.entity} is an oblate spheroid / spherical, directly refuting the claim that it is ${claimedShape}.`,
+            keyEvidence: evidenceSnippet.slice(0, 140),
+            stanceScore: -1,
+            relevanceScore: 1.0,
+            explanation: `Scientific consensus confirms ${claimTriple.entity} is spherical, not ${claimedShape}.`,
+            temporalRelevance: 'HISTORICAL',
+          };
+        }
+
+        // Case B: Claim asserts ROUND / SPHERICAL and evidence confirms SPHERICAL (Requirement 4)
+        if (isClaimedSpherical && evHasSpherical) {
+          return {
+            relation: 'supports',
+            relationToClaim: 'SUPPORTS',
+            relevance: 'direct',
+            confidence: 99,
+            reasoning: `Shape verified: Authoritative scientific and astronomical records confirm the ${claimTriple.entity} is spherical / round.`,
+            keyEvidence: evidenceSnippet.slice(0, 140),
+            stanceScore: 1,
+            relevanceScore: 1.0,
+            explanation: `Authoritative records verify ${claimTriple.entity} is ${claimedShape}.`,
+            temporalRelevance: 'HISTORICAL',
+          };
+        }
+
+        // Case C: Opposite geometric shape
+        if (claimedShape !== 'round' && claimedShape !== 'spherical' && evHasSpherical) {
+          return {
+            relation: 'contradicts',
+            relationToClaim: 'CONTRADICTS',
+            relevance: 'direct',
+            confidence: 98,
+            reasoning: `Shape contradiction: Verified records establish ${claimTriple.entity} is spherical, contradicting the assertion that it is ${claimedShape}.`,
+            keyEvidence: evidenceSnippet.slice(0, 140),
+            stanceScore: -1,
+            relevanceScore: 1.0,
+            explanation: `Shape contradiction: ${claimTriple.entity} is spherical, not ${claimedShape}.`,
+            temporalRelevance: 'HISTORICAL',
+          };
+        }
       }
     }
 

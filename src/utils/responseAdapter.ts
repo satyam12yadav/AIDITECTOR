@@ -143,14 +143,27 @@ export const transformBackendResponseToUi = (
       }
     }
 
-    const calculatedScore =
-      typeof c.claimScore === 'number'
-        ? c.claimScore
-        : inferredStatus === 'supported'
-        ? 90
-        : inferredStatus === 'contradicted'
-        ? 8
-        : 50;
+    const isNonVerifiable = c.isVerifiable === false || ['BELIEF_OR_THEOLOGICAL', 'OPINION', 'PREDICTION'].includes(c.classification || '');
+
+    let finalStatusLabel = statusLabel;
+    if (isNonVerifiable) {
+      finalStatusLabel =
+        c.classification === 'BELIEF_OR_THEOLOGICAL'
+          ? 'Belief / Theological'
+          : c.classification === 'PREDICTION'
+          ? 'Future Prediction'
+          : 'Subjective Opinion';
+    }
+
+    const calculatedScore = isNonVerifiable
+      ? undefined
+      : typeof c.claimScore === 'number'
+      ? c.claimScore
+      : inferredStatus === 'supported'
+      ? 90
+      : inferredStatus === 'contradicted'
+      ? 8
+      : 50;
 
     const strongestSource =
       c.strongestSource ||
@@ -163,12 +176,15 @@ export const transformBackendResponseToUi = (
       claimId: (c.id || `CL-${idx + 1}`).toUpperCase(),
       statement: c.text || c.statement || '',
       status: inferredStatus,
-      statusLabel,
+      statusLabel: finalStatusLabel,
       importance: c.importance,
       claimType: c.claim_type,
+      classification: c.classification,
+      isVerifiable: !isNonVerifiable,
+      notVerifiableReason: c.notVerifiableReason,
       flagReason: c.reasoning || flagReason,
       claimScore: calculatedScore,
-      confidence: c.confidence || c.evaluation?.confidence || (inferredStatus === 'unverified' ? 45 : 90),
+      confidence: isNonVerifiable ? 0 : c.confidence || c.evaluation?.confidence || (inferredStatus === 'unverified' ? 45 : 90),
       evidenceCount: c.evidenceCount ?? matchingEvidence.length,
       supportingEvidenceCount:
         c.supportingEvidenceCount ?? matchingEvidence.filter((e: any) => e.relation === 'supports').length,

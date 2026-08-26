@@ -8,7 +8,7 @@
     "dev": "vite",
     "build": "tsc && vite build && tsc -p tsconfig.server.json",
     "client:build": "tsc && vite build",
-    "test": "tsx server/src/__tests__/compoundClaims.test.ts && tsx server/src/__tests__/contradictionVsUncertainty.test.ts && tsx server/src/__tests__/tournamentWinnerContradiction.test.ts && tsx server/src/__tests__/sourceQualityAndConflict.test.ts && tsx server/src/__tests__/temporalContradiction.test.ts && tsx server/src/__tests__/extractor.test.ts && tsx server/src/__tests__/evidenceRetriever.test.ts && tsx server/src/__tests__/adversarialSuite.test.ts && tsx server/src/__tests__/credibilityScorer.test.ts",
+    "test": "tsx server/src/__tests__/bidirectionalAndClassification.test.ts && tsx server/src/__tests__/compoundClaims.test.ts && tsx server/src/__tests__/contradictionVsUncertainty.test.ts && tsx server/src/__tests__/tournamentWinnerContradiction.test.ts && tsx server/src/__tests__/sourceQualityAndConflict.test.ts && tsx server/src/__tests__/temporalContradiction.test.ts && tsx server/src/__tests__/extractor.test.ts && tsx server/src/__tests__/evidenceRetriever.test.ts && tsx server/src/__tests__/adversarialSuite.test.ts && tsx server/src/__tests__/credibilityScorer.test.ts",
     "preview": "vite preview",
     "server:dev": "tsx watch server/src/index.ts",
     "server:build": "tsc -p tsconfig.server.json",

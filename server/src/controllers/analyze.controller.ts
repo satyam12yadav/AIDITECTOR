@@ -69,11 +69,16 @@ export const analyzeArticle = async (
     const tClaimStart = Date.now();
     const { claims: rawClaims } = claimExtractorService.extractClaims(articleResult.text);
 
-    // 2. Extract entities for each claim
-    const claims: ExtractedClaim[] = rawClaims.map((c) => ({
-      ...c,
-      entities: entityExtractorService.extractEntities(c.text),
-    }));
+    // 2. Extract entities and subclaims for each claim
+    const claims: ExtractedClaim[] = rawClaims.map((c) => {
+      const subclaims = entityExtractorService.extractSubclaims(c.text);
+      return {
+        ...c,
+        isCompound: subclaims.length > 1,
+        subclaims: subclaims.length > 1 ? subclaims : undefined,
+        entities: entityExtractorService.extractEntities(c.text),
+      };
+    });
     timings.claimExtractionMs = Date.now() - tClaimStart;
 
     // 3. Multi-source concurrent evidence retrieval

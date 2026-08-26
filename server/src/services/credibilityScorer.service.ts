@@ -35,6 +35,55 @@ export class CredibilityScorerService {
     // 1. Process and calibrate each individual claim independently
     this.evaluateIndividualClaims(claims, evidence);
 
+    // Check if article consists exclusively of non-verifiable claims (Theological, Opinion, Prediction)
+    const nonVerifiableClaims = claims.filter(
+      (c) =>
+        c.isVerifiable === false ||
+        c.classification === 'BELIEF_OR_THEOLOGICAL' ||
+        c.classification === 'OPINION' ||
+        c.classification === 'PREDICTION'
+    );
+
+    if (nonVerifiableClaims.length === claims.length && claims.length > 0) {
+      const firstType = nonVerifiableClaims[0].classification;
+      const verdictLabel =
+        firstType === 'BELIEF_OR_THEOLOGICAL'
+          ? 'Belief / Theological'
+          : firstType === 'PREDICTION'
+          ? 'Future Prediction'
+          : 'Subjective Opinion';
+
+      return {
+        score: 50,
+        verdict: 'Needs Verification',
+        breakdown: {
+          evidenceSupport: 50,
+          sourceReliability: 50,
+          crossSourceAgreement: 50,
+          claimVerification: 50,
+          articleQuality: 50,
+        },
+        confidence: 0,
+        summary:
+          nonVerifiableClaims[0].notVerifiableReason ||
+          `This content consists of ${verdictLabel.toLowerCase()}s that are not objectively testable as empirical facts.`,
+        limitations: [
+          'Claim is theological, subjective, or future-predictive and cannot be empirically corroborated.',
+        ],
+        diagnostics: [],
+        articleSummary: {
+          claimsAnalyzed: claims.length,
+          supportedCount: 0,
+          contradictedCount: 0,
+          unclearCount: claims.length,
+          majorContradictedCount: 0,
+          whyThisScore:
+            nonVerifiableClaims[0].notVerifiableReason ||
+            `This content consists of ${verdictLabel.toLowerCase()}s that are not objectively testable as empirical facts.`,
+        },
+      };
+    }
+
     // 2. Calculate the 5 independent architectural components (0-100)
     const evidenceSupport = this.calculateEvidenceSupport(claims, evidence);
     const sourceReliability = this.calculateSourceReliability(article, evidence, limitations);
@@ -43,8 +92,6 @@ export class CredibilityScorerService {
     const articleQuality = this.calculateArticleQuality(article, claims, evidence, limitations);
 
     // 3. Multi-Claim Importance-Weighted Aggregation
-    // weightedContribution = claimScore * claimImportance
-    // overallScore = sum(weightedContribution) / sum(claimImportance)
     let totalImportance = 0;
     let weightedScoreSum = 0;
 
@@ -55,6 +102,9 @@ export class CredibilityScorerService {
     let strongContradictionDetected = false;
 
     for (const claim of claims) {
+      if (claim.isVerifiable === false || claim.claimScore === undefined) {
+        continue;
+      }
       const importance = typeof claim.importance === 'number' ? claim.importance : 0.5;
       const normalizedImp = importance > 1 ? importance / 100 : importance;
       const weight = Math.max(0.1, Math.min(1.0, normalizedImp));
@@ -177,6 +227,30 @@ export class CredibilityScorerService {
     evidence: RetrievedEvidenceItem[]
   ): void {
     for (const claim of claims) {
+      // 0. Non-Verifiable Claims (Theological beliefs, opinions, predictions - Requirements 8, 9, 10)
+      if (
+        claim.isVerifiable === false ||
+        claim.classification === 'BELIEF_OR_THEOLOGICAL' ||
+        claim.classification === 'OPINION' ||
+        claim.classification === 'PREDICTION'
+      ) {
+        claim.consensusStatus = 'INSUFFICIENT_EVIDENCE';
+        claim.relation = 'unclear';
+        claim.claimScore = undefined;
+        claim.confidence = 0;
+        claim.evidenceCount = 0;
+        claim.supportingEvidenceCount = 0;
+        claim.contradictingEvidenceCount = 0;
+        claim.reasoning =
+          claim.notVerifiableReason ||
+          (claim.classification === 'BELIEF_OR_THEOLOGICAL'
+            ? 'This is a religious or theological claim rather than an objectively testable factual claim. Different religious traditions may hold different beliefs about it.'
+            : claim.classification === 'PREDICTION'
+            ? 'Future outcomes cannot currently be verified as true or false.'
+            : 'Subjective opinion or personal aesthetic judgment that cannot be empirically verified.');
+        continue;
+      }
+
       const matchingEv = evidence.filter((e) => e.claimId === claim.id);
       claim.evidenceCount = matchingEv.length;
 
