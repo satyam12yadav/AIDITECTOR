@@ -125,17 +125,43 @@ export class EvidenceRetrieverService {
       queries.add(`${claimTriple.entity} timeline date`);
     }
 
-    // 6. Superlatives & Comparisons
-    if (/\b(largest|biggest|smallest|highest|tallest|deepest|longest|fastest|coldest|hottest|most populous)\b/i.test(cleaned)) {
+    // 6. Superlatives & Comparisons (Requirement 8)
+    if (claimTriple && claimTriple.attribute === 'superlative') {
+      const superType = claimTriple.superlativeType || 'largest';
+      const category = claimTriple.category || 'entity';
+      const scope = claimTriple.scope || 'Solar System';
+      queries.add(`${superType} ${category} in the ${scope}`.trim());
+      queries.add(`${superType} ${category} ${scope}`.trim());
+      queries.add(`${superType} ${category} in the world`.trim());
+      if (claimTriple.holder) {
+        queries.add(`${claimTriple.holder} ${superType} ${category}`.trim());
+      }
+    } else if (/\b(largest|biggest|smallest|highest|tallest|deepest|longest|fastest|coldest|hottest|most populous)\b/i.test(cleaned)) {
       const superlativeMatch = cleaned.match(
         /\b(largest|biggest|smallest|highest|tallest|deepest|longest|fastest|coldest|hottest|most populous)\s*(\w+)?/i
       );
       const subject = claimTriple?.entity || cleaned.split(' ')[0];
       if (superlativeMatch && subject) {
+        queries.add(`${superlativeMatch[0]} in the world`);
+        queries.add(`${superlativeMatch[0]} Solar System`);
         queries.add(`${subject} ${superlativeMatch[0]}`);
-        queries.add(`${subject} ${superlativeMatch[0]} by area`);
-        queries.add(`${subject} ${superlativeMatch[0]} in the world`);
       }
+    }
+
+    // 6b. Composition & Material assertion (Requirement 3, 4, 5)
+    if (claimTriple && claimTriple.attribute === 'composition') {
+      const subject = claimTriple.holder || claimTriple.entity;
+      queries.add(`${subject} composition scientific`);
+      queries.add(`what is the ${subject} made of`);
+      queries.add(`${subject} geology surface material`);
+      queries.add(`${subject} planetary body composition`);
+    }
+
+    // 6c. Scientific Constants & Boiling/Freezing
+    if (claimTriple && claimTriple.attribute === 'scientific' && claimTriple.property) {
+      const subject = claimTriple.holder || 'water';
+      queries.add(`${subject} ${claimTriple.property} standard atmospheric pressure`);
+      queries.add(`${subject} ${claimTriple.property} celsius`);
     }
 
     // 7. Tournament / Competition Winner assertion

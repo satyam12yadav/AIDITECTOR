@@ -6,6 +6,7 @@ export interface ClaimTriple {
     | 'location'
     | 'capital'
     | 'superlative'
+    | 'composition'
     | 'numerical'
     | 'temporal'
     | 'scientific'
@@ -27,6 +28,10 @@ export interface ClaimTriple {
   replacedEntity?: string;
   year?: string;
   tournament?: string;
+  superlativeType?: string;
+  category?: string;
+  scope?: string;
+  property?: string;
 }
 
 export interface EvidenceTriple {
@@ -312,11 +317,23 @@ export class EntityExtractorService {
       };
     }
 
-    // 3. Capital assertion: e.g. "The capital of India is Mumbai", "India's capital city is New Delhi"
+    // 3. Capital assertion: e.g. "Paris is the capital of Germany", "The capital of India is Mumbai", "India's capital city is New Delhi"
+    const cityFirstCapMatch = clean.match(/^([a-zA-Z\s]+?)\s+(?:is|serves as)\s+(?:the\s+)?capital(?: city)?\s+of\s+(?:the\s+)?([a-zA-Z\s]+?)[.]?$/i);
+    if (cityFirstCapMatch) {
+      const capVal = cityFirstCapMatch[1].trim().toLowerCase().replace(/^(the|a|an)\s+/i, '');
+      const rawEntity = cityFirstCapMatch[2].trim();
+      return {
+        entity: rawEntity,
+        attribute: 'capital',
+        claimValue: capVal,
+        isNegated,
+      };
+    }
+
     const capMatch = clean.match(/(?:capital(?: city)? of\s+([a-zA-Z\s]+?)\s+is|([a-zA-Z\s]+?)(?:'s|\s+)\s*capital(?: city)?\s+is)\s+([a-zA-Z\s]+?)[.]?$/i);
     if (capMatch) {
       const rawEntity = (capMatch[1] || capMatch[2] || 'India').trim();
-      const capVal = capMatch[3].trim().toLowerCase().replace(/[.]+$/, '');
+      const capVal = capMatch[3].trim().toLowerCase().replace(/[.]+$/, '').replace(/^(the|a|an)\s+/i, '');
       return {
         entity: rawEntity,
         attribute: 'capital',
@@ -339,7 +356,58 @@ export class EntityExtractorService {
       };
     }
 
-    // 5. Astronomical / Physical Comparison: e.g. "The Earth is larger than the Sun"
+    // 5. Composition / Material assertion (e.g. "The Moon is made entirely of cheese", "The Moon is a rocky body")
+    const compMatMatch = clean.match(/^(?:the\s+)?([a-zA-Z\s]+?)\s+(?:is|are)\s+(?:made|composed|consists|formed)(?:\s+(?:entirely|mostly|primarily|partially|predominantly))?\s+of\s+([a-zA-Z0-9'\s-]+?)[.]?$/i);
+    if (compMatMatch) {
+      const rawSubject = compMatMatch[1].trim();
+      const subject = rawSubject.replace(/^(the|a|an)\s+/i, '');
+      const material = compMatMatch[2].trim().toLowerCase();
+      return {
+        entity: subject,
+        attribute: 'composition',
+        holder: subject,
+        claimValue: material,
+        property: 'composition',
+        isNegated,
+      };
+    }
+    const rockyMatch = clean.match(/^(?:the\s+)?([a-zA-Z\s]+?)\s+(?:is|are)\s+(?:a\s+)?(rocky\s+body|rocky\s+planetary\s+body|gaseous\s+planet|gas\s+giant|terrestrial\s+planet|rocky\s+material)[.]?$/i);
+    if (rockyMatch) {
+      const rawSubject = rockyMatch[1].trim();
+      const subject = rawSubject.replace(/^(the|a|an)\s+/i, '');
+      return {
+        entity: subject,
+        attribute: 'composition',
+        holder: subject,
+        claimValue: rockyMatch[2].trim().toLowerCase(),
+        property: 'composition',
+        isNegated,
+      };
+    }
+
+    // 6. Superlative & Category Ranking (e.g. "The Earth is the largest planet in the Solar System", "Asia is the largest continent in world", "The Pacific Ocean is the smallest ocean")
+    const superMatch = clean.match(/^(?:the\s+)?([a-zA-Z\s]+?)\s+(?:is|are)\s+(?:the\s+)?(largest|biggest|smallest|highest|lowest|tallest|deepest|longest|fastest|coldest|hottest|oldest|youngest|most populous|first|last|most|least)\s+([a-zA-Z0-9'\s-]+?)(?:\s+(?:in|of)\s+(?:the\s+)?([a-zA-Z0-9'\s-]+))?[.]?$/i);
+    if (superMatch) {
+      const rawSubject = superMatch[1].trim();
+      const subject = rawSubject.replace(/^(the|a|an)\s+/i, '');
+      const superType = superMatch[2].trim().toLowerCase();
+      const category = superMatch[3].trim().toLowerCase();
+      const scope = superMatch[4] ? superMatch[4].trim() : '';
+      const fullCategory = scope ? `${category} in the ${scope}` : category;
+
+      return {
+        entity: fullCategory,
+        attribute: 'superlative',
+        holder: subject,
+        claimValue: `${superType} ${fullCategory}`,
+        superlativeType: superType,
+        category,
+        scope,
+        isNegated,
+      };
+    }
+
+    // 7. Astronomical / Physical Comparison: e.g. "The Earth is larger than the Sun"
     const compMatch = clean.match(/(?:the\s+)?([a-zA-Z\s]+?)\s+is\s+(larger than|smaller than|bigger than|hotter than|colder than|brighter than)\s+(?:the\s+)?([a-zA-Z\s]+?)[.]?$/i);
     if (compMatch) {
       return {
@@ -350,7 +418,7 @@ export class EntityExtractorService {
       };
     }
 
-    // 6. Astronomical / Orbital Motion: e.g. "The Earth orbits the Sun"
+    // 8. Astronomical / Orbital Motion: e.g. "The Earth orbits the Sun"
     if (/\b(orbits the sun|revolves around the sun|rotates around the sun|orbits sun)\b/i.test(lower)) {
       return {
         entity: 'Earth',
@@ -360,7 +428,26 @@ export class EntityExtractorService {
       };
     }
 
-    // 7. Physical Constants: e.g. "Water freezes at approximately 0 degrees Celsius"
+    // 9. Physical Constants & Boiling/Melting: e.g. "Water boils at 20°C at standard atmospheric pressure", "Water freezes at 0°C"
+    const boilMatch = clean.match(/^(?:the\s+)?([a-zA-Z\s]+?)\s+(boils|freezes|melts)\s+at\s+(?:approximately|around|about)?\s*(-?\d+(?:\.\d+)?)\s*(?:°\s*c|degrees celsius|°\s*f|degrees fahrenheit|k|kelvin)?(?:\s+at\s+([a-zA-Z0-9'\s-]+))?[.]?$/i);
+    if (boilMatch) {
+      const rawSubject = boilMatch[1].trim().replace(/^(the|a|an)\s+/i, '');
+      const action = boilMatch[2].toLowerCase();
+      const temp = parseFloat(boilMatch[3]);
+      const pressure = boilMatch[4] ? boilMatch[4].trim() : 'standard atmospheric pressure';
+      return {
+        entity: `${rawSubject} ${action} point`,
+        attribute: 'scientific',
+        holder: rawSubject,
+        property: `${action} point`,
+        numericVal: temp,
+        claimValue: `${temp}°C`,
+        unit: '°c',
+        scope: pressure,
+        isNegated,
+      };
+    }
+
     if (/\b(water freezes|freezing point of water|boiling point of water)\b/i.test(lower)) {
       const val = lower.includes('0') ? '0 degrees celsius' : lower.includes('100') ? '100 degrees celsius' : 'freezing point';
       return {
@@ -371,7 +458,7 @@ export class EntityExtractorService {
       };
     }
 
-    // 8. Numerical / Quantitative assertion: e.g. "India has a population of approximately 1.4 billion", "Mount Everest is approximately 8,849 meters high"
+    // 10. Numerical / Quantitative assertion: e.g. "India has a population of approximately 1.4 billion", "Mount Everest is approximately 8,849 meters high"
     const numMatch = clean.match(/(?:cost|population of|population is|has a population of|height of|is approximately|elevation of|create|worth)\s+(?:approximately|around|about)?\s*(₹?\s*\d+([,.]\d+)*\s*(?:crore|lakh|billion|million|trillion|percent|%|meters|metres|jobs)?)/i);
     if (numMatch && numMatch[1]) {
       const numStr = numMatch[1].replace(/,/g, '').trim();
@@ -386,7 +473,7 @@ export class EntityExtractorService {
       };
     }
 
-    // 9. Date / Temporal assertion: e.g. "Event happened on January 10", "Construction began on Monday", "completed by 2028"
+    // 11. Date / Temporal assertion: e.g. "Event happened on January 10", "Construction began on Monday", "completed by 2028"
     const dateMatch = clean.match(/(?:happened on|occurred on|held on|began on|completed by|inaugurated on)\s+([a-zA-Z0-9,\s]+?)[.]?$/i);
     if (dateMatch && dateMatch[1]) {
       return {
@@ -397,19 +484,22 @@ export class EntityExtractorService {
       };
     }
 
-    // 10. Superlative assertion: e.g. "Asia is the largest continent", "Asia is smallest continent"
+    // 12. Superlative fallback: e.g. "Asia is largest continent"
     if (/\b(largest|biggest|smallest|highest|tallest|deepest|longest|fastest|coldest|hottest|most populous)\b/i.test(lower)) {
       const superlative = lower.match(/\b(largest|biggest|smallest|highest|tallest|deepest|longest|fastest|coldest|hottest|most populous)\s*(?:continent|country|ocean|mountain|river|city)?/i);
-      const subject = lower.includes('asia') ? 'Asia' : clean.split(' ')[0];
+      const rawSubject = lower.includes('asia') ? 'Asia' : lower.includes('earth') ? 'Earth' : lower.includes('jupiter') ? 'Jupiter' : clean.split(' ')[0];
       return {
-        entity: subject,
+        entity: superlative ? superlative[0].trim() : 'superlative',
         attribute: 'superlative',
+        holder: rawSubject.replace(/^(the|a|an)\s+/i, ''),
         claimValue: superlative ? superlative[0].trim() : 'superlative',
+        superlativeType: (superlative ? superlative[0].split(' ')[0] : 'largest').toLowerCase(),
+        category: superlative ? superlative[0].split(' ')[1] || 'entity' : 'entity',
         isNegated,
       };
     }
 
-    // 11. Ruling party assertion: e.g. "BJP is ruler party of India"
+    // 13. Ruling party assertion: e.g. "BJP is ruler party of India"
     if (/ruler party|ruling party|in power|holds power/i.test(lower)) {
       return {
         entity: lower.includes('bjp') ? 'BJP' : clean.split(' ')[0],
