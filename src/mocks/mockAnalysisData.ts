@@ -316,21 +316,33 @@ export const mockErrorDetails: ErrorDetails = {
 
 export const sampleArticlePresets = [
   {
-    name: 'Economic Policy Analysis (Credible - 78%)',
-    url: 'https://financial-forensics.org/reports/2024/fiscal-projections-middle-class.html',
-    text: `A new fiscal framework aims to rebalance tariff revenues while maintaining median tax rates. According to initial legislative projections, median income households will see adjustments capped under 4% under revised Section 12-B stipulations. However, global supply chain disruptions have driven localized final-mile freight tariffs up by 18.2% year-over-year.`,
+    name: '1. Credible Geography',
+    url: 'https://britannica.com/place/Asia-geography-overview',
+    text: `Asia is the largest continent in the world by both land area and total population. India is a sovereign country located in South Asia.`,
     targetMock: mockResultCredible,
   },
   {
-    name: 'Coffee & Anti-Aging Study (Sensationalized - 64%)',
-    url: 'https://healthwellnessdaily.co/news/coffee-reverses-aging-2024',
-    text: `A groundbreaking new study claims drinking 3 cups of dark roast coffee every single day actively reverses cellular aging in adults over 50. Researchers observed polyphenol antioxidant activity and declared it a total miracle for human longevity across the board.`,
+    name: '2. Contradicted Claim',
+    url: 'https://factcheck-archive.org/reports/ram-mandir-geography-claim',
+    text: `Ram Mandir is located in Pakistan and was constructed in Islamabad.`,
+    targetMock: mockResultDebunked,
+  },
+  {
+    name: '3. Mixed True / False',
+    url: 'https://science-digest.org/articles/astronomy-and-geography-primer',
+    text: `India is a sovereign country located in Asia. The Earth is the largest planet in the Solar System.`,
     targetMock: mockResultSensationalized,
   },
   {
-    name: 'Biometric Currency Mandate (Debunked - 24%)',
-    url: 'https://globaltruthbulletin.net/wire/2024/chip-mandate-leak',
-    text: `URGENT ALERT: Leaked global banking treaties confirm all commercial bank accounts will require mandatory biometric microchip integration starting next month. Sources confirm high level treaties have already been signed in secret.`,
+    name: '4. Current-Event Temporal',
+    url: 'https://cricket-wire.org/news/2026/india-t20-captaincy-roster',
+    text: `Now T20 captain of India is Suryakumar Yadav.`,
     targetMock: mockResultDebunked,
+  },
+  {
+    name: '5. Unverified / Obscure',
+    url: 'https://local-gazette.org/village-population-survey',
+    text: `A newly discovered village named Xyzoria has exactly 417 residents.`,
+    targetMock: mockResultCredible,
   },
 ];

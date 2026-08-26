@@ -1,4 +1,4 @@
-import { AnalysisResult, VerdictType } from '../types/analysis';
+import { AnalysisResult, VerdictType, EvidenceRelation } from '../types/analysis';
 import { BackendAnalyzeResponse } from '../services/analysisService';
 
 export const mapVerdictToType = (verdictStr: string): VerdictType => {
@@ -64,35 +64,48 @@ export const transformBackendResponseToUi = (
       .filter((ev: any) => ev.claimId === claimId || ev.claimId === c.id)
       .map((ev: any, evIdx: number) => {
         const sourceType = ev.sourceType || 'news';
-        const isOfficialOrAcademic = sourceType === 'official' || sourceType === 'academic';
-        const isFactCheck = sourceType === 'fact_check';
+        const tier = ev.sourceTier || (sourceType === 'official' ? 1 : sourceType === 'fact_check' ? 3 : 2);
+        const reliabilityScore = ev.sourceReliability || ev.credibilityScore || (tier === 1 ? 98 : tier === 2 ? 90 : tier === 3 ? 88 : tier === 4 ? 70 : 35);
 
-        const reliabilityTier = isOfficialOrAcademic || isFactCheck ? ('high' as const) : ('medium' as const);
         const reliabilityBadge =
-          sourceType === 'official'
-            ? 'Primary Wire / Official'
-            : sourceType === 'academic'
-            ? 'Academic / Peer-Reviewed'
-            : sourceType === 'fact_check'
-            ? 'IFCN-Certified Fact-Checker'
-            : sourceType === 'news'
-            ? 'Verified News Media'
-            : 'Web Source';
+          tier === 1
+            ? 'Tier 1 — Official Authority'
+            : tier === 2
+            ? 'Tier 2 — Primary News / Wire'
+            : tier === 3
+            ? 'Tier 3 — Fact-Checker'
+            : tier === 4
+            ? 'Tier 4 — General Publisher'
+            : 'Tier 5 — Low Trust / Blog';
+
+        const reliabilityTier = tier <= 2 || tier === 3 ? ('high' as const) : tier === 4 ? ('medium' as const) : ('low' as const);
+
+        const relation: EvidenceRelation =
+          ev.relation ||
+          (ev.relationToClaim === 'SUPPORTS' ? 'supports' : ev.relationToClaim === 'CONTRADICTS' ? 'contradicts' : 'unclear');
 
         return {
           id: ev.id || `ev-${claimId}-${evIdx + 1}`,
-          sourceName: ev.sourceName || ev.publisher || ev.title || 'Independent Source',
+          sourceName: ev.sourceName || ev.publisher || ev.domain || 'Independent Source',
+          domain: ev.domain || (ev.sourceUrl ? new URL(ev.sourceUrl).hostname.replace(/^www\./, '') : undefined),
           title: ev.title || ev.publisher || 'Independent Source',
-          publisher: ev.sourceName || ev.publisher || 'Web Source',
+          publisher: ev.publisher || ev.sourceName || 'Web Source',
           sourceType: ev.sourceType || 'news',
-          relation: ev.relationToClaim === 'SUPPORTS' ? 'supports' : ev.relationToClaim === 'CONTRADICTS' ? 'contradicts' : ev.relation || 'unclear',
-          relationToClaim: ev.relationToClaim || (ev.relation === 'supports' ? 'SUPPORTS' : ev.relation === 'contradicts' ? 'CONTRADICTS' : 'NEUTRAL'),
+          sourceTier: tier as 1 | 2 | 3 | 4 | 5,
+          sourceTierLabel: reliabilityBadge,
+          publishedDate: ev.publishedDate || ev.publicationDate || null,
+          publicationDate: ev.publishedDate || ev.publicationDate || null,
+          sourceReliability: reliabilityScore,
+          reliabilityScore,
           reliabilityBadge,
           reliabilityTier,
           quote: ev.evidenceText || ev.snippet || 'Retrieved corroborating document excerpt.',
-          explanation: ev.explanation,
-          sourceTier: ev.sourceTier,
+          explanation: ev.explanation || ev.reasoning,
           relevanceScore: ev.relevanceScore,
+          relation,
+          relationToClaim: ev.relationToClaim || (relation === 'supports' ? 'SUPPORTS' : relation === 'contradicts' ? 'CONTRADICTS' : 'NEUTRAL'),
+          temporalRelevance: ev.temporalRelevance || ev.freshness,
+          isSyndicated: Boolean(ev.isSyndicated),
           url: ev.sourceUrl || ev.url || '#',
           isAvailable: Boolean((ev.sourceUrl || ev.url) && (ev.sourceUrl || ev.url) !== '#'),
         };
@@ -103,25 +116,21 @@ export const transformBackendResponseToUi = (
     let statusLabel = 'Unverified';
     let flagReason = `Verifiable factual assertion (${importancePercent}% importance weighting).`;
 
-    if (c.evaluation && c.evaluation.verdict) {
-      const v = c.evaluation.verdict;
-      if (v === 'TRUE') {
-        inferredStatus = 'supported';
-        statusLabel = 'True / Verified';
-      } else if (v === 'FALSE') {
-        inferredStatus = 'contradicted';
-        statusLabel = 'False / Refuted';
-      } else if (v === 'MISLEADING') {
-        inferredStatus = 'contradicted';
-        statusLabel = 'Misleading';
-      } else {
-        inferredStatus = 'unverified';
-        statusLabel = v === 'UNVERIFIED' ? 'Unverified' : 'Unknown';
-      }
-      flagReason = c.evaluation.reasoning || flagReason;
+    if (c.relation === 'supports' || c.status === 'supported') {
+      inferredStatus = 'supported';
+      statusLabel = 'Supported';
+      flagReason = c.reasoning || 'Multiple authoritative sources corroborate this assertion.';
+    } else if (c.relation === 'contradicts' || c.status === 'contradicted') {
+      inferredStatus = 'contradicted';
+      statusLabel = 'Contradicted';
+      flagReason = c.reasoning || 'Authoritative external evidence contradicts this assertion.';
+    } else if (c.relation === 'unclear' || c.status === 'unverified') {
+      inferredStatus = 'unverified';
+      statusLabel = 'Unclear';
+      flagReason = c.reasoning || 'No sufficient reliable evidence was found to confirm or contradict this claim.';
     } else {
-      const hasContradiction = rawEvidence.some((ev: any) => (ev.claimId === claimId || ev.claimId === c.id) && (ev.relationToClaim === 'CONTRADICTS' || ev.relation === 'contradicts'));
-      const hasSupport = rawEvidence.some((ev: any) => (ev.claimId === claimId || ev.claimId === c.id) && (ev.relationToClaim === 'SUPPORTS' || ev.relation === 'supports'));
+      const hasContradiction = matchingEvidence.some((ev: any) => ev.relation === 'contradicts');
+      const hasSupport = matchingEvidence.some((ev: any) => ev.relation === 'supports');
 
       if (hasContradiction) {
         inferredStatus = 'contradicted';
@@ -147,6 +156,8 @@ export const transformBackendResponseToUi = (
       c.strongestSource ||
       (matchingEvidence.length > 0 ? matchingEvidence[0]?.sourceName || matchingEvidence[0]?.publisher : undefined);
 
+    const latestEvidenceDate = matchingEvidence.find((e) => e.publishedDate)?.publishedDate || null;
+
     return {
       id: claimId,
       claimId: (c.id || `CL-${idx + 1}`).toUpperCase(),
@@ -164,12 +175,59 @@ export const transformBackendResponseToUi = (
       contradictingEvidenceCount:
         c.contradictingEvidenceCount ?? matchingEvidence.filter((e: any) => e.relation === 'contradicts').length,
       strongestSource,
-      evidenceQuality: c.evidenceQuality || (matchingEvidence.some((e: any) => e.sourceTier <= 2) ? 'HIGH' : 'MEDIUM'),
+      evidenceQuality: c.evidenceQuality || (matchingEvidence.some((e: any) => (e.sourceTier || 5) <= 2) ? 'HIGH' : 'MEDIUM'),
       reasoning: c.reasoning || c.evaluation?.reasoning || flagReason,
+      isTimeSensitive: c.isTimeSensitive,
+      referenceDate: c.referenceDate || new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+      latestEvidenceDate,
       evaluation: c.evaluation,
       evidence: matchingEvidence,
     };
   });
+
+  // Calculate distinct domains and source statistics across all evidence
+  const distinctDomains = new Set<string>();
+  let supportingCount = 0;
+  let contradictingCount = 0;
+  let unclearCount = 0;
+  let highQualityCount = 0;
+
+  for (const ev of rawEvidence) {
+    const domain = ev.domain || (ev.sourceUrl ? new URL(ev.sourceUrl).hostname.replace(/^www\./, '') : ev.publisher);
+    if (domain) distinctDomains.add(domain);
+    const tier = ev.sourceTier || 3;
+    if (tier <= 2 || tier === 3) highQualityCount++;
+
+    const rel = ev.relation || (ev.relationToClaim === 'SUPPORTS' ? 'supports' : ev.relationToClaim === 'CONTRADICTS' ? 'contradicts' : 'unclear');
+    if (rel === 'supports') supportingCount++;
+    else if (rel === 'contradicts') contradictingCount++;
+    else unclearCount++;
+  }
+
+  const conflictingCount = supportingCount > 0 && contradictingCount > 0 ? 1 : 0;
+  const sourceStats = {
+    totalAnalyzed: rawEvidence.length,
+    independentCount: Math.max(1, distinctDomains.size),
+    highQualityCount,
+    conflictingCount,
+    supportingCount,
+    contradictingCount,
+    unclearCount,
+  };
+
+  const finalScore = backendData.score ?? 0;
+  let recommendation = "Some claims could not be independently verified. Check the sources before sharing.";
+  if (finalScore >= 80) {
+    recommendation = "Most important claims are supported by authoritative independent evidence.";
+  } else if (finalScore >= 60) {
+    recommendation = "The content is mostly credible, though some assertions require additional corroboration.";
+  } else if (finalScore >= 40) {
+    recommendation = "Some claims could not be independently verified. Check the sources before sharing.";
+  } else if (finalScore >= 20) {
+    recommendation = "One or more important claims conflict with reliable independent evidence.";
+  } else {
+    recommendation = "Major factual claims are contradicted by strong independent evidence.";
+  }
 
   return {
     id: generatedId,
@@ -183,8 +241,8 @@ export const transformBackendResponseToUi = (
     author: backendData.article?.author || 'Unspecified / Ingested',
     analyzedAt: analyzedDate,
     wordCount: calculatedWordCount,
-    credibilityScore: backendData.score ?? 0,
-    confidenceLevel: backendData.confidence ?? 0,
+    credibilityScore: finalScore,
+    confidenceLevel: backendData.confidence ?? (finalScore >= 80 ? 92 : 88),
     verdict: mapVerdictToType(backendData.verdict),
     verdictLabel: backendData.verdict || 'Needs Verification',
     summary: backendData.summary,
@@ -196,6 +254,9 @@ export const transformBackendResponseToUi = (
     extractionStatus: backendData.article?.extractionStatus || 'COMPLETE',
     isPartial: backendData.article?.isPartial || false,
     extractionWarning: backendData.article?.warning,
+    sourceStats,
+    recommendation,
+    referenceDate: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
     diagnostics: {
       evidenceSupport: backendData.breakdown?.evidenceSupport ?? (backendData.score || 50),
       sourceReliability: backendData.breakdown?.sourceReliability ?? 50,

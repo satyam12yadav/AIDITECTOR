@@ -1,6 +1,5 @@
 import React from 'react';
 import { AnalysisResult } from '../../types/analysis';
-import { SourceCard } from './SourceCard';
 
 interface ForensicReportViewProps {
   result: AnalysisResult;
@@ -10,7 +9,7 @@ export const ForensicReportView: React.FC<ForensicReportViewProps> = ({ result }
   const accentColor =
     result.credibilityScore >= 70
       ? 'bg-emerald-soft'
-      : result.credibilityScore >= 45
+      : result.credibilityScore >= 40
       ? 'bg-amber-soft'
       : 'bg-error';
 
@@ -18,13 +17,23 @@ export const ForensicReportView: React.FC<ForensicReportViewProps> = ({ result }
     window.print();
   };
 
+  const stats = result.sourceStats || {
+    totalAnalyzed: result.claims.reduce((acc, c) => acc + c.evidence.length, 0),
+    independentCount: Math.max(1, new Set(result.claims.flatMap((c) => c.evidence.map((e) => e.domain || e.sourceName))).size),
+    highQualityCount: result.claims.reduce((acc, c) => acc + c.evidence.filter((e) => (e.sourceTier || 5) <= 3).length, 0),
+    conflictingCount: result.claims.filter((c) => c.supportingEvidenceCount && c.contradictingEvidenceCount).length,
+    supportingCount: result.claims.reduce((acc, c) => acc + (c.supportingEvidenceCount || 0), 0),
+    contradictingCount: result.claims.reduce((acc, c) => acc + (c.contradictingEvidenceCount || 0), 0),
+    unclearCount: result.claims.reduce((acc, c) => acc + (c.evidence.length - (c.supportingEvidenceCount || 0) - (c.contradictingEvidenceCount || 0)), 0),
+  };
+
   return (
     <div className="w-full flex flex-col items-center py-4">
       {/* Top Document Controls (Hidden when printing) */}
       <div className="w-full max-w-4xl flex justify-between items-center mb-4 no-print px-2">
-        <div className="text-xs font-label-code text-outline uppercase flex items-center gap-1.5">
+        <div className="text-xs font-label-code text-outline uppercase flex items-center gap-1.5 font-bold">
           <span className="material-symbols-outlined text-[16px]">verified</span>
-          Institutional Verification Dossier
+          Institutional Forensic Verification Dossier
         </div>
         <div className="flex gap-2">
           <button
@@ -32,7 +41,7 @@ export const ForensicReportView: React.FC<ForensicReportViewProps> = ({ result }
             className="px-3.5 py-1.5 border border-outline-variant bg-surface-container-lowest rounded font-label-code text-xs text-on-surface hover:bg-surface-variant transition-colors flex items-center gap-1.5 shadow-subtle"
           >
             <span className="material-symbols-outlined text-[16px]">print</span>
-            Print Report
+            Print Forensic Report
           </button>
         </div>
       </div>
@@ -40,131 +49,267 @@ export const ForensicReportView: React.FC<ForensicReportViewProps> = ({ result }
       {/* Main Document Article */}
       <article className="w-full max-w-4xl bg-surface-container-lowest border border-outline-variant shadow-ambient rounded-lg relative overflow-hidden">
         {/* Top Accent Line */}
-        <div className={`h-1.5 w-full ${accentColor} absolute top-0 left-0`} />
+        <div className={`h-2 w-full ${accentColor} absolute top-0 left-0`} />
 
-        <div className="p-6 md:p-12">
-          {/* Header Section */}
-          <header className="mb-10 border-b border-outline-variant pb-8">
-            <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-              <span
-                className={`inline-flex items-center px-3 py-1 rounded font-label-code text-xs font-bold border ${
-                  result.credibilityScore >= 70
-                    ? 'bg-emerald-bg text-emerald-dark border-emerald-soft'
-                    : result.credibilityScore >= 45
-                    ? 'bg-amber-bg text-amber-dark border-amber-soft'
-                    : 'bg-error-container text-on-error-container border-error/30'
-                }`}
-              >
-                CREDIBILITY SCORE: {result.credibilityScore}/100 ({result.verdictLabel})
-              </span>
-
-              <span className="text-on-surface-variant font-label-caps text-xs tracking-wider">
+        <div className="p-6 md:p-10 space-y-8">
+          {/* 1. FINAL RESULT HEADER */}
+          <header className="border-b border-outline-variant pb-6">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+              <span className="text-outline font-label-caps text-xs tracking-wider font-bold">
                 DOSSIER ID: {result.id}
+              </span>
+              <span className="font-label-code text-xs text-outline">
+                Analyzed: {result.analyzedAt}
               </span>
             </div>
 
-            <h1 className="font-headline-lg-mobile md:font-headline-lg text-xl md:text-3xl lg:text-4xl text-on-background font-bold mb-6 leading-tight">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-surface-container-low p-5 rounded-lg border border-outline-variant/60 mb-6">
+              <div>
+                <div className="text-outline uppercase text-[11px] tracking-wider mb-1 font-semibold font-label-caps">
+                  Overall Credibility Score
+                </div>
+                <div className="text-2xl md:text-3xl font-extrabold font-mono text-on-background">
+                  {result.credibilityScore} <span className="text-base text-outline font-normal">/ 100</span>
+                </div>
+              </div>
+
+              <div>
+                <div className="text-outline uppercase text-[11px] tracking-wider mb-1 font-semibold font-label-caps">
+                  Final Verdict
+                </div>
+                <div
+                  className={`text-base md:text-lg font-bold font-label-caps ${
+                    result.credibilityScore >= 70
+                      ? 'text-emerald-700'
+                      : result.credibilityScore >= 40
+                      ? 'text-amber-700'
+                      : 'text-red-700'
+                  }`}
+                >
+                  {result.verdictLabel.toUpperCase()}
+                </div>
+              </div>
+
+              <div>
+                <div className="text-outline uppercase text-[11px] tracking-wider mb-1 font-semibold font-label-caps">
+                  Verification Confidence
+                </div>
+                <div className="text-2xl md:text-3xl font-extrabold font-mono text-primary">
+                  {result.confidenceLevel}%
+                </div>
+              </div>
+            </div>
+
+            <h1 className="font-headline-lg text-xl md:text-2xl lg:text-3xl text-on-background font-bold mb-4 leading-snug">
               {result.title}
             </h1>
 
-            {/* Metadata Grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 md:gap-6 font-label-code text-xs text-on-surface-variant bg-surface-container-low p-4 rounded border border-outline-variant/60">
-              <div>
-                <div className="text-outline uppercase text-[10px] tracking-wider mb-1 font-semibold">
-                  Publisher
+            {/* Article Extraction Status */}
+            {result.sourceUrl && (
+              <div
+                className={`p-3.5 rounded border text-xs font-body-sm flex items-center justify-between gap-3 ${
+                  result.isPartial
+                    ? 'bg-amber-50 border-amber-300 text-amber-900'
+                    : 'bg-emerald-50 border-emerald-300 text-emerald-900'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-[18px]">
+                    {result.isPartial ? 'warning' : 'verified'}
+                  </span>
+                  <span>
+                    <strong>EXTRACTION STATUS: {result.extractionStatus || (result.isPartial ? 'PARTIAL' : 'COMPLETE')}</strong>
+                    {result.isPartial ? ' — Only part of this article was accessible. Verification may be incomplete.' : ' — Full article body retrieved successfully.'}
+                  </span>
                 </div>
-                <div className="text-on-background font-bold truncate">{result.publisher}</div>
+                {result.publisher && (
+                  <span className="font-label-code text-[11px] bg-white/70 px-2 py-0.5 rounded border border-current">
+                    {result.publisher}
+                  </span>
+                )}
               </div>
-              <div>
-                <div className="text-outline uppercase text-[10px] tracking-wider mb-1 font-semibold">
-                  Author
-                </div>
-                <div className="text-on-background truncate">{result.author}</div>
-              </div>
-              <div>
-                <div className="text-outline uppercase text-[10px] tracking-wider mb-1 font-semibold">
-                  Analyzed At
-                </div>
-                <div className="text-on-background">{result.analyzedAt}</div>
-              </div>
-              <div>
-                <div className="text-outline uppercase text-[10px] tracking-wider mb-1 font-semibold">
-                  Confidence
-                </div>
-                <div className="text-on-background font-bold">{result.confidenceLevel}%</div>
-              </div>
-            </div>
+            )}
           </header>
 
-          {/* Executive Summary */}
-          <section className="mb-10">
-            <h2 className="font-headline-md text-base md:text-lg text-primary font-bold mb-4 flex items-center gap-2">
-              <span className="material-symbols-outlined text-outline">psychology</span>
-              Executive Forensic Summary
+          {/* 2. WHY THIS SCORE? */}
+          <section className="bg-surface-container p-6 rounded-lg border border-outline-variant">
+            <h2 className="font-headline-md text-base md:text-lg text-primary font-bold mb-3 flex items-center gap-2">
+              <span className="material-symbols-outlined text-[20px]">psychology</span>
+              Why this Score?
             </h2>
-            <div className="bg-surface-container p-6 rounded border border-outline-variant text-on-surface text-sm md:text-base leading-relaxed space-y-3 font-body-base">
-              {result.executiveSummary.map((paragraph, idx) => (
-                <p key={idx}>{paragraph}</p>
-              ))}
+            <p className="text-xs md:text-sm text-on-surface leading-relaxed font-body-md">
+              {result.articleSummary?.whyThisScore ||
+                result.summary ||
+                (result.executiveSummary && result.executiveSummary[0]) ||
+                'Credibility synthesized from factual claim verification, independent wire corroboration, and source trust rankings.'}
+            </p>
+          </section>
+
+          {/* 3. SOURCE DISTRIBUTION & EVIDENCE SUMMARY */}
+          <section className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="bg-surface-container-low p-5 rounded-lg border border-outline-variant">
+              <h3 className="font-label-caps text-xs text-outline font-bold uppercase tracking-wider mb-4 flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-[16px]">account_balance</span>
+                Source Distribution
+              </h3>
+              <div className="space-y-2.5 font-label-code text-xs">
+                <div className="flex justify-between pb-1.5 border-b border-outline-variant/60">
+                  <span className="text-on-surface-variant">Sources analyzed:</span>
+                  <span className="font-bold text-on-surface">{stats.totalAnalyzed}</span>
+                </div>
+                <div className="flex justify-between pb-1.5 border-b border-outline-variant/60">
+                  <span className="text-on-surface-variant">Independent sources:</span>
+                  <span className="font-bold text-primary">{stats.independentCount}</span>
+                </div>
+                <div className="flex justify-between pb-1.5 border-b border-outline-variant/60">
+                  <span className="text-on-surface-variant">High-quality sources (Tiers 1-3):</span>
+                  <span className="font-bold text-emerald-700">{stats.highQualityCount}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-on-surface-variant">Conflicting sources:</span>
+                  <span className={`font-bold ${stats.conflictingCount > 0 ? 'text-amber-700' : 'text-on-surface'}`}>
+                    {stats.conflictingCount}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-surface-container-low p-5 rounded-lg border border-outline-variant">
+              <h3 className="font-label-caps text-xs text-outline font-bold uppercase tracking-wider mb-4 flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-[16px]">fact_check</span>
+                Evidence Summary
+              </h3>
+              <div className="space-y-2.5 font-label-code text-xs">
+                <div className="flex justify-between pb-1.5 border-b border-outline-variant/60">
+                  <span className="text-emerald-700 font-semibold">✓ Supporting evidence:</span>
+                  <span className="font-bold text-emerald-700">{stats.supportingCount}</span>
+                </div>
+                <div className="flex justify-between pb-1.5 border-b border-outline-variant/60">
+                  <span className="text-red-700 font-semibold">✕ Contradicting evidence:</span>
+                  <span className="font-bold text-red-700">{stats.contradictingCount}</span>
+                </div>
+                <div className="flex justify-between pb-1.5 border-b border-outline-variant/60">
+                  <span className="text-amber-700 font-semibold">? Unclear evidence:</span>
+                  <span className="font-bold text-amber-700">{stats.unclearCount}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-on-surface-variant">Independent publishers:</span>
+                  <span className="font-bold text-on-surface">{stats.independentCount}</span>
+                </div>
+              </div>
             </div>
           </section>
 
-          {/* Bento Grid: Extracted Claims Checklist & Source Profile */}
-          <section className="mb-8">
-            <h2 className="font-headline-md text-base md:text-lg text-primary font-bold mb-4 border-b border-outline-variant pb-2">
-              Forensic Claim Decomposition
+          {/* 4. CLAIM-BY-CLAIM DETAILED FORENSIC BREAKDOWN */}
+          <section className="space-y-4">
+            <h2 className="font-headline-md text-base md:text-lg text-primary font-bold border-b border-outline-variant pb-2 flex items-center gap-2">
+              <span className="material-symbols-outlined text-[20px]">list_alt</span>
+              Claim-by-Claim Forensic Breakdown ({result.claims.length})
             </h2>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Claims Checklist */}
-              <div className="bg-background border border-outline-variant rounded p-6">
-                <h3 className="font-label-caps text-xs text-outline mb-4 uppercase font-bold tracking-wider">
-                  Isolate Assertions ({result.claims.length})
-                </h3>
-                <ul className="space-y-4">
-                  {result.claims.map((claim) => {
-                    const iconColor =
-                      claim.status === 'supported'
-                        ? 'text-emerald-dark'
-                        : claim.status === 'contradicted'
-                        ? 'text-error'
-                        : 'text-amber-dark';
+            <div className="space-y-4">
+              {result.claims.map((claim, idx) => {
+                const isContradicted = claim.status === 'contradicted';
+                const isSupported = claim.status === 'supported';
 
-                    const iconName =
-                      claim.status === 'supported'
-                        ? 'check_circle'
-                        : claim.status === 'contradicted'
-                        ? 'cancel'
-                        : 'warning';
-
-                    return (
-                      <li
-                        key={claim.id}
-                        className="flex gap-3 items-start pb-4 border-b border-outline-variant border-dashed last:border-0 last:pb-0"
-                      >
-                        <span
-                          className={`material-symbols-outlined ${iconColor} mt-0.5 fill text-lg`}
-                        >
-                          {iconName}
+                return (
+                  <div
+                    key={claim.id}
+                    className={`p-5 rounded-lg border ${
+                      isContradicted
+                        ? 'bg-red-50/50 border-red-200'
+                        : isSupported
+                        ? 'bg-emerald-50/50 border-emerald-200'
+                        : 'bg-surface-container-lowest border-outline-variant'
+                    }`}
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-label-code text-xs font-bold text-outline">
+                          CLAIM {idx + 1} ({claim.claimId})
                         </span>
-                        <div className="flex-1">
-                          <p className="font-semibold text-xs md:text-sm text-on-surface mb-1">
-                            "{claim.statement}"
-                          </p>
-                          <div className="flex items-center justify-between text-[11px] text-on-surface-variant font-label-code">
-                            <span>Status: {claim.statusLabel}</span>
-                            <span className="text-outline">{claim.claimId}</span>
-                          </div>
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
+                        <span className="font-label-code text-[11px] bg-white px-2 py-0.5 rounded border border-outline-variant font-bold text-primary">
+                          Importance: {claim.importance !== undefined ? (claim.importance >= 0.7 ? 'HIGH' : claim.importance >= 0.4 ? 'MEDIUM' : 'LOW') : 'MEDIUM'}
+                        </span>
+                        {claim.claimScore !== undefined && (
+                          <span
+                            className={`font-label-code text-[11px] px-2 py-0.5 rounded border font-bold ${
+                              claim.claimScore >= 80
+                                ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                                : claim.claimScore <= 25
+                                ? 'bg-red-100 text-red-900 border-red-300'
+                                : 'bg-surface-container text-on-surface border-outline-variant'
+                            }`}
+                          >
+                            Score: {claim.claimScore} / 100
+                          </span>
+                        )}
+                        {claim.confidence !== undefined && (
+                          <span className="font-label-code text-[11px] bg-white px-2 py-0.5 rounded border border-outline-variant text-on-surface-variant font-semibold">
+                            Confidence: {claim.confidence}%
+                          </span>
+                        )}
+                      </div>
 
-              {/* Source Profile Card */}
-              <SourceCard source={result.sourceProfile} />
+                      <span
+                        className={`font-label-caps text-xs px-3 py-1 rounded border font-bold ${
+                          isContradicted
+                            ? 'bg-red-100 text-red-900 border-red-300'
+                            : isSupported
+                            ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                            : 'bg-surface-container text-on-surface-variant border-outline-variant'
+                        }`}
+                      >
+                        VERDICT: {isContradicted ? 'CONTRADICTED' : isSupported ? 'SUPPORTED' : 'UNCLEAR'}
+                      </span>
+                    </div>
+
+                    <p className="font-semibold text-sm md:text-base text-on-surface mb-3">
+                      "{claim.statement}"
+                    </p>
+
+                    {/* Why this verdict */}
+                    <div className="bg-white/80 p-3 rounded border border-outline-variant/60 text-xs font-body-sm text-on-surface mb-3">
+                      <strong>Why:</strong> {claim.reasoning || claim.flagReason || 'Evaluation synthesized from retrieved independent records.'}
+                    </div>
+
+                    {/* Strongest Evidence Card if available */}
+                    {claim.evidence.length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-outline-variant/50">
+                        <span className="font-label-caps text-[11px] text-outline uppercase font-bold tracking-wider block mb-2">
+                          Strongest Retrieved Evidence:
+                        </span>
+                        <div className="bg-white p-3.5 rounded border border-outline-variant text-xs space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-on-surface">
+                              {claim.evidence[0].sourceName} ({claim.evidence[0].domain || 'verified'})
+                            </span>
+                            <span className="font-label-code text-[11px] text-primary font-semibold">
+                              {claim.evidence[0].sourceTierLabel || 'Tier 1 Official'} · {claim.evidence[0].sourceReliability || 95}% Reliability
+                            </span>
+                          </div>
+                          <p className="italic text-on-surface-variant bg-surface-container-low p-2 rounded">
+                            "{claim.evidence[0].quote}"
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
+          </section>
+
+          {/* 5. FINAL RECOMMENDATION (Responsible Language) */}
+          <section className="bg-surface-container-lowest border-2 border-primary/20 p-6 rounded-lg">
+            <h2 className="font-headline-md text-base md:text-lg text-primary font-bold mb-2 flex items-center gap-2">
+              <span className="material-symbols-outlined text-[20px]">recommend</span>
+              Final Recommendation
+            </h2>
+            <p className="text-xs md:text-sm text-on-surface leading-relaxed font-body-md">
+              {result.recommendation ||
+                'Major claims have been analyzed against independent wire sources. Verify critical claims with primary documentation before sharing.'}
+            </p>
           </section>
         </div>
       </article>

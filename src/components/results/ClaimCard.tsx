@@ -55,9 +55,15 @@ export const ClaimCard: React.FC<ClaimCardProps> = ({
             </span>
 
             {importanceValue !== null && (
-              <span className="font-label-code text-[11px] bg-surface-container text-primary font-bold px-2 py-0.5 rounded border border-outline-variant flex items-center gap-1">
+              <span
+                className={`font-label-code text-[11px] font-bold px-2 py-0.5 rounded border flex items-center gap-1 ${
+                  importanceValue >= 70
+                    ? 'bg-amber-50 text-amber-900 border-amber-300'
+                    : 'bg-surface-container text-primary border-outline-variant'
+                }`}
+              >
                 <span className="material-symbols-outlined text-[13px]">priority_high</span>
-                Importance: {importanceValue}%
+                Importance: {importanceValue >= 70 ? 'HIGH' : importanceValue >= 40 ? 'MEDIUM' : 'LOW'} ({importanceValue}%)
               </span>
             )}
 
@@ -75,6 +81,13 @@ export const ClaimCard: React.FC<ClaimCardProps> = ({
               </span>
             )}
 
+            {claim.confidence !== undefined && (
+              <span className="font-label-code text-[11px] bg-surface-container text-on-surface-variant font-semibold px-2 py-0.5 rounded border border-outline-variant flex items-center gap-1">
+                <span className="material-symbols-outlined text-[12px] text-primary">verified_user</span>
+                Conf: {claim.confidence}%
+              </span>
+            )}
+
             {claim.strongestSource && (
               <span className="font-label-code text-[11px] bg-surface-container text-on-surface-variant px-2 py-0.5 rounded border border-outline-variant flex items-center gap-1">
                 <span className="material-symbols-outlined text-[12px] text-outline">verified</span>
@@ -87,12 +100,26 @@ export const ClaimCard: React.FC<ClaimCardProps> = ({
             "{claim.statement}"
           </h3>
 
-          {claim.reasoning || claim.flagReason ? (
-            <p className="mt-2 text-xs font-body-sm text-on-surface-variant flex items-center gap-1.5">
-              <span className="material-symbols-outlined text-[14px] text-outline">info</span>
-              <span>{claim.reasoning || claim.flagReason}</span>
+          {/* Temporal Banner if Time-Sensitive */}
+          {claim.isTimeSensitive && (
+            <div className="mt-2.5 bg-blue-50/60 border border-blue-200 rounded p-2.5 flex items-center gap-2 text-xs text-blue-900 font-label-code">
+              <span className="material-symbols-outlined text-[16px] text-blue-600">schedule</span>
+              <span>
+                <strong>CURRENT CLAIM:</strong> Evaluated relative to reference date <em>{claim.referenceDate || 'current period'}</em>
+                {claim.latestEvidenceDate ? ` (Latest evidence: ${claim.latestEvidenceDate.slice(0, 10)})` : ''}
+              </span>
+            </div>
+          )}
+
+          {/* Why Section */}
+          <div className="mt-2.5 p-3 rounded bg-surface-container-low border border-outline-variant/60">
+            <span className="font-label-caps text-[11px] text-primary uppercase font-bold tracking-wider block mb-1">
+              Why this verdict:
+            </span>
+            <p className="text-xs font-body-sm text-on-surface leading-relaxed">
+              {claim.reasoning || claim.flagReason || 'Evaluation generated from authoritative evidence retrieval.'}
             </p>
-          ) : null}
+          </div>
         </div>
 
         <div className="flex items-center gap-3 shrink-0">

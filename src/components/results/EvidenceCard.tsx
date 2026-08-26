@@ -33,30 +33,46 @@ export const EvidenceCard: React.FC<EvidenceCardProps> = ({ evidence }) => {
       ? 'border-l-4 border-l-[#ef4444]'
       : 'border-l-4 border-l-[#f59e0b]';
 
+  const reliabilityPercent = evidence.sourceReliability || evidence.reliabilityScore || 85;
+  const pubDate = evidence.publishedDate || evidence.publicationDate;
+
   return (
     <div
       className={`bg-surface-container-lowest border border-outline-variant ${borderAccent} p-4 md:p-5 rounded-r shadow-subtle flex flex-col justify-between`}
     >
       <div>
-        {/* Header: Publisher & Relation Badge */}
+        {/* Header: Publisher, Domain, Tier & Relation Badge */}
         <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
           <div className="flex items-center gap-2">
             <span className="material-symbols-outlined text-[18px] text-primary">feed</span>
             <div>
-              <span className="font-label-code text-xs md:text-sm font-bold text-on-surface">
-                {evidence.sourceName || evidence.publisher || 'Independent Source'}
-              </span>
-              {evidence.publisher && evidence.publisher !== evidence.sourceName && (
-                <span className="font-label-code text-[11px] text-outline ml-1.5">
-                  ({evidence.publisher})
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="font-label-code text-xs md:text-sm font-bold text-on-surface">
+                  {evidence.sourceName || evidence.publisher || 'Independent Source'}
                 </span>
-              )}
+                {evidence.domain && (
+                  <span className="font-label-code text-[11px] text-outline">
+                    ({evidence.domain})
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                <span className="font-label-code text-[10px] text-primary font-semibold">
+                  {evidence.sourceTierLabel || evidence.reliabilityBadge || 'Verified Source'}
+                </span>
+                {pubDate && (
+                  <span className="font-label-code text-[10px] text-outline flex items-center gap-0.5">
+                    <span className="material-symbols-outlined text-[11px]">calendar_today</span>
+                    {pubDate.slice(0, 10)}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 
           <div className="flex items-center gap-1.5">
-            <span className="font-label-code text-[11px] px-2 py-0.5 rounded bg-surface-container text-on-surface-variant border border-outline-variant">
-              {evidence.reliabilityBadge}
+            <span className="font-label-code text-[11px] px-2 py-0.5 rounded bg-surface-container text-on-surface-variant border border-outline-variant font-bold">
+              {reliabilityPercent}% Rel
             </span>
             {relationBadge}
           </div>

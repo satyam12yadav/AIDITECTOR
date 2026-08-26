@@ -18,19 +18,17 @@ export const VerdictBadge: React.FC<VerdictBadgeProps> = ({
 
   switch (verdict) {
     case 'HIGHLY_CREDIBLE':
-      colorClasses = 'bg-emerald-bg text-emerald-dark border-emerald-soft';
-      iconName = 'verified';
-      defaultLabel = 'HIGHLY CREDIBLE';
-      break;
     case 'PROBABLY_CREDIBLE':
+    case 'MOSTLY_CREDIBLE':
       colorClasses = 'bg-[#ecfdf5] text-[#065f46] border-[#34d399]';
       iconName = 'check_circle';
-      defaultLabel = 'PROBABLY CREDIBLE';
+      defaultLabel = verdict === 'HIGHLY_CREDIBLE' ? 'HIGHLY CREDIBLE' : 'PROBABLY CREDIBLE';
       break;
     case 'UNVERIFIED':
-      colorClasses = 'bg-[#fef3c7] text-[#92400e] border-[#f59e0b]';
-      iconName = 'warning';
-      defaultLabel = 'UNVERIFIED / SENSATIONALIZED';
+    case 'UNCERTAIN':
+      colorClasses = 'bg-[#fffbeb] text-[#92400e] border-[#fde68a]';
+      iconName = 'help';
+      defaultLabel = 'UNCERTAIN / CONFLICTING EVIDENCE';
       break;
     case 'NEEDS_VERIFICATION':
       colorClasses = 'bg-surface-container-high text-on-surface border-outline';
@@ -43,9 +41,10 @@ export const VerdictBadge: React.FC<VerdictBadgeProps> = ({
       defaultLabel = 'LIKELY MISLEADING';
       break;
     case 'HIGHLY_SUSPICIOUS':
+    case 'PROBABLY_FALSE':
       colorClasses = 'bg-error-container text-on-error-container border-[#ffb4ab]';
       iconName = 'cancel';
-      defaultLabel = 'HIGHLY SUSPICIOUS';
+      defaultLabel = 'PROBABLY FALSE';
       break;
   }
 

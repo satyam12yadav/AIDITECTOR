@@ -7,14 +7,23 @@ export type EvidenceRelation = 'supports' | 'contradicts' | 'unclear';
 export interface EvidenceItem {
   id: string;
   sourceName: string;
+  domain?: string;
   publisher?: string;
   title?: string;
   sourceType?: string;
+  sourceTier?: 1 | 2 | 3 | 4 | 5;
+  sourceTierLabel?: string;
+  publishedDate?: string | null;
+  publicationDate?: string | null;
+  sourceReliability?: number;
+  reliabilityScore?: number;
   reliabilityBadge: string;
   reliabilityTier: ReliabilityTier;
   quote: string;
   url: string;
   relation?: EvidenceRelation;
+  temporalRelevance?: string;
+  isSyndicated?: boolean;
   note?: string;
   isAvailable: boolean;
 }
@@ -36,6 +45,9 @@ export interface ClaimItem {
   strongestSource?: string;
   evidenceQuality?: 'HIGH' | 'MEDIUM' | 'LOW';
   reasoning?: string;
+  isTimeSensitive?: boolean;
+  referenceDate?: string;
+  latestEvidenceDate?: string | null;
   evidence: EvidenceItem[];
 }
 
@@ -59,9 +71,12 @@ export interface DiagnosticMetrics {
 export type VerdictType =
   | 'HIGHLY_CREDIBLE'
   | 'PROBABLY_CREDIBLE'
+  | 'MOSTLY_CREDIBLE'
   | 'NEEDS_VERIFICATION'
+  | 'UNCERTAIN'
   | 'LIKELY_MISLEADING'
   | 'HIGHLY_SUSPICIOUS'
+  | 'PROBABLY_FALSE'
   | 'UNVERIFIED';
 
 export interface MultiClaimArticleSummary {
@@ -71,6 +86,16 @@ export interface MultiClaimArticleSummary {
   unclearCount: number;
   majorContradictedCount: number;
   whyThisScore: string;
+}
+
+export interface SourceDistributionStats {
+  totalAnalyzed: number;
+  independentCount: number;
+  highQualityCount: number;
+  conflictingCount: number;
+  supportingCount: number;
+  contradictingCount: number;
+  unclearCount: number;
 }
 
 export interface AnalysisResult {
@@ -93,6 +118,9 @@ export interface AnalysisResult {
   totalClaimsIdentified: number;
   wordCount?: number;
   articleSummary?: MultiClaimArticleSummary;
+  sourceStats?: SourceDistributionStats;
+  recommendation?: string;
+  referenceDate?: string;
   publishedAt?: string | null;
   updatedAt?: string | null;
   retrievedAt?: string;
