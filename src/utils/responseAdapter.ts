@@ -209,6 +209,7 @@ export const transformBackendResponseToUi = (
       latestEvidenceDate,
       evaluation: c.evaluation,
       evidence: matchingEvidence,
+      auditTrail: c.auditTrail,
     };
   });
 
@@ -333,5 +334,6 @@ export const transformBackendResponseToUi = (
     },
     totalClaimsIdentified: mappedClaims.length,
     articleSummary: (backendData as any).articleSummary,
+    auditTrail: (backendData as any).auditTrail,
   };
 };

@@ -123,6 +123,14 @@ export class EvidenceRetrieverService {
       queries.add(`what is the true shape of the ${claimTriple.entity}`);
     }
 
+    // 2c. Marital Status & Personal Status assertion (Requirement 14)
+    if (claimTriple && claimTriple.attribute === 'marital_status') {
+      queries.add(`${claimTriple.entity} marital status`);
+      queries.add(`${claimTriple.entity} wife spouse`);
+      queries.add(`${claimTriple.entity} married or unmarried`);
+      queries.add(`${claimTriple.entity} bachelor single married`);
+    }
+
     // 3. Astronomical / Scientific comparison or constant assertion
     if (claimTriple && (claimTriple.attribute === 'scientific' || claimTriple.attribute === 'comparison')) {
       if (claimTriple.claimValue.includes('orbits the sun')) {

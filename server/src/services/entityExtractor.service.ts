@@ -6,6 +6,7 @@ export interface ClaimTriple {
     | 'location'
     | 'capital'
     | 'shape'
+    | 'marital_status'
     | 'superlative'
     | 'composition'
     | 'numerical'
@@ -415,6 +416,24 @@ export class EntityExtractorService {
         claimValue: shapeVal,
         property: 'shape',
         isNegated,
+      };
+    }
+
+    // 3c. Marital Status & Personal Status Assertion (Requirement 14): e.g. "Salman Khan is married", "Salman Khan is unmarried", "Salman Khan is a bachelor"
+    const maritalMatch = clean.match(/^(?:the\s+)?([a-zA-Z\s.-]+?)\s+(is|is not|was|has never been)\s+(?:currently\s+|now\s+)?(?:a\s+)?(married(?:\s+to\s+[a-zA-Z\s]+)?|unmarried|single|bachelor|divorced|widowed)[.]?$/i);
+    if (maritalMatch) {
+      const subject = maritalMatch[1].trim().replace(/^(the|a|an)\s+/i, '');
+      const verb = maritalMatch[2].toLowerCase();
+      const statusVal = maritalMatch[3].trim().toLowerCase();
+      const isNeg = verb.includes('not') || verb.includes('never');
+
+      return {
+        entity: subject,
+        attribute: 'marital_status',
+        holder: subject,
+        claimValue: statusVal,
+        property: 'marital_status',
+        isNegated: isNeg,
       };
     }
 

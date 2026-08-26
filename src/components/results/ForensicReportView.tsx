@@ -161,12 +161,33 @@ export const ForensicReportView: React.FC<ForensicReportViewProps> = ({ result }
               <span className="material-symbols-outlined text-[20px]">psychology</span>
               Why this Score?
             </h2>
-            <p className="text-xs md:text-sm text-on-surface leading-relaxed font-body-md">
+            <p className="text-xs md:text-sm text-on-surface leading-relaxed font-body-md mb-4">
               {result.articleSummary?.whyThisScore ||
                 result.summary ||
                 (result.executiveSummary && result.executiveSummary[0]) ||
                 'Credibility synthesized from factual claim verification, independent wire corroboration, and source trust rankings.'}
             </p>
+
+            {result.auditTrail && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-3 border-t border-outline-variant/60 font-label-code text-xs">
+                <div className="bg-surface-container-low p-2.5 rounded border border-outline-variant/60">
+                  <div className="text-[10px] text-outline uppercase font-semibold">Support Strength</div>
+                  <div className="text-sm font-bold text-emerald-700">{result.auditTrail.supportStrength}</div>
+                </div>
+                <div className="bg-surface-container-low p-2.5 rounded border border-outline-variant/60">
+                  <div className="text-[10px] text-outline uppercase font-semibold">Contradiction Strength</div>
+                  <div className="text-sm font-bold text-red-700">{result.auditTrail.contradictionStrength}</div>
+                </div>
+                <div className="bg-surface-container-low p-2.5 rounded border border-outline-variant/60">
+                  <div className="text-[10px] text-outline uppercase font-semibold">Evidence Coverage</div>
+                  <div className="text-sm font-bold text-primary">{result.auditTrail.evidenceCoverage}</div>
+                </div>
+                <div className="bg-surface-container-low p-2.5 rounded border border-outline-variant/60">
+                  <div className="text-[10px] text-outline uppercase font-semibold">Source Independence</div>
+                  <div className="text-sm font-bold text-on-surface">{result.auditTrail.sourceIndependence} Domains</div>
+                </div>
+              </div>
+            )}
           </section>
 
           {/* 3. SOURCE DISTRIBUTION & EVIDENCE SUMMARY */}

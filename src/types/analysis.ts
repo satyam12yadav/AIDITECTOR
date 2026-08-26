@@ -65,6 +65,18 @@ export interface ClaimItem {
   referenceDate?: string;
   latestEvidenceDate?: string | null;
   evidence: EvidenceItem[];
+  auditTrail?: EvidenceAuditTrail;
+}
+
+export interface EvidenceAuditTrail {
+  supportStrength: number; // 0.0 - 1.0
+  contradictionStrength: number; // 0.0 - 1.0
+  evidenceCoverage: number; // 0.0 - 1.0
+  supportingSourcesCount: number;
+  contradictingSourcesCount: number;
+  ignoredSourcesCount: number;
+  calculationReason: string;
+  sourceIndependence: number;
 }
 
 export interface SourceProfile {
@@ -143,6 +155,7 @@ export interface AnalysisResult {
   extractionStatus?: 'COMPLETE' | 'PARTIAL' | 'FAILED';
   isPartial?: boolean;
   extractionWarning?: string;
+  auditTrail?: EvidenceAuditTrail;
 }
 
 export type AnalysisInputMode = 'url' | 'text';

@@ -6,6 +6,7 @@ import {
   CredibilityVerdict,
   ScoreDiagnosticItem,
   MultiClaimArticleSummary,
+  EvidenceAuditTrail,
 } from '../types/api.js';
 import { sourceRegistry } from './sourceRegistry.service.js';
 import { stanceEvaluatorService } from './stanceEvaluator.service.js';
@@ -19,6 +20,7 @@ export interface CredibilityScoringResult {
   limitations: string[];
   diagnostics: ScoreDiagnosticItem[];
   articleSummary: MultiClaimArticleSummary;
+  auditTrail?: EvidenceAuditTrail;
 }
 
 export class CredibilityScorerService {
@@ -201,6 +203,32 @@ export class CredibilityScorerService {
     // 8. Generate transparent diagnostics
     const diagnostics = this.generateDiagnostics(claims, evidence);
 
+    // 9. Calculate Overall Evidence Audit Trail (Requirement 10)
+    const distinctDomains = new Set(evidence.map((e) => e.domain || (e.sourceUrl ? new URL(e.sourceUrl).hostname.replace(/^www\./, '') : e.publisher)));
+    const totalIgnored = claims.reduce((acc, c) => acc + (c.auditTrail?.ignoredSourcesCount || 0), 0);
+    const avgSupStrength = claims.length > 0
+      ? Math.round((claims.reduce((acc, c) => acc + (c.auditTrail?.supportStrength || 0), 0) / claims.length) * 100) / 100
+      : 0;
+    const avgConStrength = claims.length > 0
+      ? Math.round((claims.reduce((acc, c) => acc + (c.auditTrail?.contradictionStrength || 0), 0) / claims.length) * 100) / 100
+      : 0;
+    const avgCoverage = claims.length > 0
+      ? Math.round((claims.reduce((acc, c) => acc + (c.auditTrail?.evidenceCoverage || 0), 0) / claims.length) * 100) / 100
+      : 0;
+
+    const overallAuditTrail: EvidenceAuditTrail = {
+      supportStrength: avgSupStrength,
+      contradictionStrength: avgConStrength,
+      evidenceCoverage: avgCoverage,
+      supportingSourcesCount: supportedCount,
+      contradictingSourcesCount: totalContradictedCount,
+      ignoredSourcesCount: totalIgnored,
+      calculationReason: whyThisScore,
+      sourceIndependence: Math.max(1, distinctDomains.size),
+    };
+
+    console.log(`[VERITAS_FINAL_AUDIT] Article: "${article.title}" | Score: ${finalScore} | Verdict: ${verdict} | SupStr: ${avgSupStrength} | ConStr: ${avgConStrength} | Coverage: ${avgCoverage} | Domains: ${distinctDomains.size}`);
+
     return {
       score: finalScore,
       verdict,
@@ -216,6 +244,7 @@ export class CredibilityScorerService {
       limitations,
       diagnostics,
       articleSummary,
+      auditTrail: overallAuditTrail,
     };
   }
 
@@ -461,6 +490,80 @@ export class CredibilityScorerService {
           claim.reasoning = `All compound propositions verified: ${subSup.map((s) => `"${s.text}" (SUPPORTED)`).join(' and ')}.`;
         }
       }
+
+      // 6. Mathematical Evidence Weighting & Audit Trail Calculation (Requirement 4 & 10)
+      let supportWeight = 0;
+      let contradictWeight = 0;
+      let ignoredCount = 0;
+      const domainWeights: Record<string, { sup: number; con: number; tier: number }> = {};
+
+      for (const ev of matchingEv) {
+        const tier = ev.sourceTier || 3;
+        const quality =
+          tier === 1 ? 1.0 :
+          tier === 2 ? 0.88 :
+          tier === 3 ? 0.80 :
+          tier === 4 ? 0.50 : 0.20;
+
+        const rel = ev.relevance || (ev.relationToClaim === 'SUPPORTS' || ev.relationToClaim === 'CONTRADICTS' ? 'direct' : 'related');
+        const relevanceMultiplier =
+          rel === 'direct' ? 1.0 :
+          rel === 'related' ? 0.35 : 0.0;
+
+        if (relevanceMultiplier === 0) {
+          ignoredCount++;
+          continue;
+        }
+
+        let temporalWeight = 1.0;
+        const isTimeSensitive = claim.isTimeSensitive || /\b(now|currently|latest|today|recent|presently|is|captain|president|minister)\b/i.test(claim.text);
+        if (isTimeSensitive) {
+          if (ev.temporalRelevance === 'OBSOLETE' || ev.freshness === 'OLD') {
+            temporalWeight = 0.10;
+          } else if (ev.temporalRelevance === 'HISTORICAL') {
+            temporalWeight = 0.25;
+          } else if (ev.temporalRelevance === 'TEMPORALLY_RELEVANT' || ev.freshness === 'CURRENT') {
+            temporalWeight = 1.0;
+          }
+        }
+
+        const effectiveWeight = quality * relevanceMultiplier * temporalWeight;
+        const domain = (ev.domain || (ev.sourceUrl ? new URL(ev.sourceUrl).hostname.replace(/^www\./, '') : ev.sourceName || 'unknown')).toLowerCase();
+
+        if (!domainWeights[domain]) {
+          domainWeights[domain] = { sup: 0, con: 0, tier };
+        }
+
+        if (ev.relation === 'supports' || ev.relationToClaim === 'SUPPORTS') {
+          const domainSup = domainWeights[domain].sup === 0 ? effectiveWeight : effectiveWeight * 0.3;
+          domainWeights[domain].sup += domainSup;
+          supportWeight += domainSup;
+        } else if (ev.relation === 'contradicts' || ev.relationToClaim === 'CONTRADICTS') {
+          const domainCon = domainWeights[domain].con === 0 ? effectiveWeight : effectiveWeight * 0.3;
+          domainWeights[domain].con += domainCon;
+          contradictWeight += domainCon;
+        } else {
+          ignoredCount++;
+        }
+      }
+
+      const supportStrength = Math.min(1.0, Math.round((supportWeight / 1.5) * 100) / 100);
+      const contradictionStrength = Math.min(1.0, Math.round((contradictWeight / 1.5) * 100) / 100);
+      const evidenceCoverage = Math.min(1.0, Math.round(((supportWeight + contradictWeight) / 1.5) * 100) / 100);
+
+      claim.auditTrail = {
+        supportStrength,
+        contradictionStrength,
+        evidenceCoverage,
+        supportingSourcesCount: supportingItems.length,
+        contradictingSourcesCount: contradictingItems.length,
+        ignoredSourcesCount: ignoredCount,
+        calculationReason: claim.reasoning || '',
+        sourceIndependence: independentSources.size,
+      };
+
+      // Backend Debug Logging (Requirement 19)
+      console.log(`[VERITAS_CLAIM_AUDIT] Claim: "${claim.text.slice(0, 45)}..." | Ev: ${matchingEv.length} | SupStr: ${supportStrength} | ConStr: ${contradictionStrength} | Coverage: ${evidenceCoverage} | Score: ${claim.claimScore} | Rel: ${claim.relation}`);
     }
   }
 

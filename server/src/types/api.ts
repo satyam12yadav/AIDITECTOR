@@ -76,6 +76,17 @@ export interface SubClaim {
   claimScore?: number;
 }
 
+export interface EvidenceAuditTrail {
+  supportStrength: number; // 0.0 - 1.0
+  contradictionStrength: number; // 0.0 - 1.0
+  evidenceCoverage: number; // 0.0 - 1.0
+  supportingSourcesCount: number;
+  contradictingSourcesCount: number;
+  ignoredSourcesCount: number;
+  calculationReason: string;
+  sourceIndependence: number;
+}
+
 export interface ExtractedClaim {
   id: string;
   text: string;
@@ -112,6 +123,7 @@ export interface ExtractedClaim {
   evidenceQuality?: 'HIGH' | 'MEDIUM' | 'LOW';
   consensusStatus?: 'UNANIMOUS_SUPPORT' | 'UNANIMOUS_CONTRADICTION' | 'CONFLICTING_EVIDENCE' | 'INSUFFICIENT_EVIDENCE';
   reasoning?: string;
+  auditTrail?: EvidenceAuditTrail;
 }
 
 export type SourceType = 'official' | 'news' | 'fact_check' | 'reference' | 'encyclopedia' | 'academic' | 'other';
@@ -224,6 +236,7 @@ export interface AnalyzeResponseData {
   sources: SourceSummary[];
   articleSummary?: MultiClaimArticleSummary;
   diagnostics?: ScoreDiagnosticItem[];
+  auditTrail?: EvidenceAuditTrail;
   timings?: Record<string, number>;
 }
 

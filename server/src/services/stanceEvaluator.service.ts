@@ -651,6 +651,85 @@ Return STRICT JSON only:
       }
     }
 
+    // EAV Check: Marital Status & Personal Relationships (Requirement 14: e.g. "Salman Khan is married")
+    if (claimTriple && claimTriple.attribute === 'marital_status') {
+      const claimSubject = (claimTriple.holder || claimTriple.entity).toLowerCase();
+      const claimedStatus = claimTriple.claimValue.toLowerCase();
+
+      const hasSubject = combined.includes(claimSubject) || this.namesMatch(claimSubject, combined);
+      if (hasSubject) {
+        const evHasUnmarried =
+          /\b(unmarried|never married|has never been married|is a bachelor|remains a bachelor|single|not married|eligible bachelor|bachelorhood)\b/i.test(combined);
+        const evHasMarried =
+          /\b(is married to|tied the knot with|married his wife|married her husband|wedding with|wife is|husband is|married couple)\b/i.test(combined);
+
+        const isClaimedMarried = claimedStatus.includes('married') && !claimedStatus.includes('unmarried') && !claimedStatus.includes('not');
+        const isClaimedUnmarried = claimedStatus.includes('unmarried') || claimedStatus.includes('single') || claimedStatus.includes('bachelor') || claimedStatus.includes('never');
+
+        // Case A: Claim asserts MARRIED while evidence establishes UNMARRIED / BACHELOR (Requirement 14)
+        if (isClaimedMarried && evHasUnmarried) {
+          return {
+            relation: 'contradicts',
+            relationToClaim: 'CONTRADICTS',
+            relevance: 'direct',
+            confidence: 98,
+            reasoning: `Marital status contradiction: Authoritative biographical records confirm ${claimTriple.entity} is unmarried / a bachelor, directly refuting the claim that they are married.`,
+            keyEvidence: evidenceSnippet.slice(0, 140),
+            stanceScore: -1,
+            relevanceScore: 1.0,
+            explanation: `Biographical records confirm ${claimTriple.entity} is unmarried, not married.`,
+            temporalRelevance: 'TEMPORALLY_RELEVANT',
+          };
+        }
+
+        // Case B: Claim asserts UNMARRIED / BACHELOR and evidence confirms UNMARRIED
+        if (isClaimedUnmarried && evHasUnmarried) {
+          return {
+            relation: 'supports',
+            relationToClaim: 'SUPPORTS',
+            relevance: 'direct',
+            confidence: 98,
+            reasoning: `Marital status confirmed: Authoritative biographical records corroborate that ${claimTriple.entity} is unmarried / single.`,
+            keyEvidence: evidenceSnippet.slice(0, 140),
+            stanceScore: 1,
+            relevanceScore: 1.0,
+            explanation: `Biographical records corroborate ${claimTriple.entity} is unmarried.`,
+            temporalRelevance: 'TEMPORALLY_RELEVANT',
+          };
+        }
+
+        // Case C: Claim asserts MARRIED and evidence confirms MARRIED
+        if (isClaimedMarried && evHasMarried && !evHasUnmarried) {
+          return {
+            relation: 'supports',
+            relationToClaim: 'SUPPORTS',
+            relevance: 'direct',
+            confidence: 95,
+            reasoning: `Marital status confirmed: Authoritative reporting verifies ${claimTriple.entity} is married.`,
+            keyEvidence: evidenceSnippet.slice(0, 140),
+            stanceScore: 1,
+            relevanceScore: 1.0,
+            explanation: `Authoritative reporting verifies ${claimTriple.entity} is married.`,
+            temporalRelevance: 'TEMPORALLY_RELEVANT',
+          };
+        }
+
+        // If page merely mentions the person without stating their marital status:
+        return {
+          relation: 'unclear',
+          relationToClaim: 'NEUTRAL',
+          relevance: 'irrelevant',
+          confidence: 50,
+          reasoning: `Evidence mentions ${claimTriple.entity} in another context but does not state or verify their marital status.`,
+          keyEvidence: '',
+          stanceScore: 0,
+          relevanceScore: 0.0,
+          explanation: `Evidence mentions ${claimTriple.entity} without verifying marital status.`,
+          temporalRelevance: 'UNKNOWN',
+        };
+      }
+    }
+
     // EAV Check: Material / Composition Claims (Requirement 3, 4, 5: e.g. "The Moon is made entirely of cheese", "The Moon is a rocky body")
     if (claimTriple && claimTriple.attribute === 'composition') {
       const subject = (claimTriple.holder || claimTriple.entity).toLowerCase();
@@ -1183,10 +1262,11 @@ Return STRICT JSON only:
       }
     }
 
-    // 4. Generic Semantic Match for Paraphrased Statements (Guarded against transitions)
+    // 4. Generic Semantic Match for Paraphrased Statements (Guarded against transitions and specific EAV claims)
+    const hasSpecificEav = claimTriple && ['marital_status', 'role_holder', 'transition', 'shape', 'location', 'capital', 'winner', 'superlative', 'composition'].includes(claimTriple.attribute);
     const hasTransitionMarker = /\b(replaced|replacing|succeeded|succeeding|took over from|stepped down|resigned|transferred to|acquired|bought by)\b/i.test(combined);
 
-    if (!hasTransitionMarker) {
+    if (!hasTransitionMarker && !hasSpecificEav) {
       const keywords = claimLower
         .replace(/[^\w\s]/g, '')
         .split(/\s+/)
