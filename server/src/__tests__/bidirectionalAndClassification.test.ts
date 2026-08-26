@@ -353,9 +353,9 @@ describe('🌐 STEP 13: BIDIRECTIONAL EVIDENCE VERIFICATION & CLAIM CLASSIFICATI
     assert.ok(scoreResult.summary.includes('Future') || scoreResult.summary.includes('prediction'));
   });
 
-  // Test Case 10: Obscure unsupported factual claim => UNCLEAR
-  it('Test 10: Obscure unsupported factual claim -> UNCLEAR (neutral score ~50, NOT false)', () => {
-    const claim = 'The obscure mountain village of Zephyrus has exactly 19 pine trees in its central square.';
+  // Test Case 10: Obscure unsupported factual claim => LIMITED EVIDENCE / UNCLEAR
+  it('Test 10: "Some obscure person owns a red bicycle." -> LIMITED EVIDENCE / UNCLEAR (neutral unverified baseline)', () => {
+    const claim = 'Some obscure person owns a red bicycle in a remote village.';
     const classInfo = claimExtractorService.classifyClaimClassification(claim);
     assert.strictEqual(classInfo.classification, 'OBJECTIVE_FACT');
     assert.strictEqual(classInfo.isVerifiable, true);
@@ -385,5 +385,109 @@ describe('🌐 STEP 13: BIDIRECTIONAL EVIDENCE VERIFICATION & CLAIM CLASSIFICATI
       `Unverified baseline score must be neutral (45-58), got ${scoreResult.score}`
     );
     assert.strictEqual(scoreResult.verdict, 'Needs Verification');
+  });
+
+  // Test Case 11: "Earth is approximately spherical." => VERY HIGH credibility
+  it('Test 11: "Earth is approximately spherical." -> VERY HIGH credibility (Score >= 85)', () => {
+    const claim = 'The Earth is approximately spherical.';
+    const evSnippet =
+      'The Earth is approximately spherical, slightly flattened at the poles into an oblate spheroid, measured by satellite geodesy.';
+    const evTitle = 'Earth Geodesy — NASA Science';
+
+    const stance = stanceEvaluatorService.evaluateDeterministic(claim, evSnippet, evTitle, false);
+    assert.strictEqual(stance.relation, 'supports');
+    assert.strictEqual(stance.stanceScore, 1);
+
+    const extClaim: ExtractedClaim = {
+      id: 'cl-11',
+      text: claim,
+      importance: 0.9,
+      claim_type: 'scientific',
+      classification: 'OBJECTIVE_FACT',
+      isVerifiable: true,
+    };
+
+    const evidence: RetrievedEvidenceItem = {
+      id: 'ev-11',
+      claimId: 'cl-11',
+      sourceName: 'NASA',
+      sourceTier: 1,
+      sourceReliability: 98,
+      title: evTitle,
+      publishedDate: '2026-08-20',
+      evidenceText: evSnippet,
+      relationToClaim: 'SUPPORTS',
+      relevance: 'direct',
+      confidence: 98,
+      credibilityScore: 98,
+      relevanceScore: 1.0,
+      domain: 'nasa.gov',
+      relation: 'supports',
+    };
+
+    const articleMeta: ArticleMetadata = {
+      title: 'Earth Shape',
+      author: null,
+      publishedAt: null,
+      publisher: null,
+      url: null,
+      text: claim,
+    };
+
+    const scoreResult = credibilityScorerService.computeCredibilityScore(articleMeta, [extClaim], [evidence]);
+    assert.ok(scoreResult.score >= 85, `Expected score >= 85 for spherical Earth, got ${scoreResult.score}`);
+    assert.strictEqual(scoreResult.verdict, 'Probably Credible');
+  });
+
+  // Test Case 12: "Suryakumar Yadav is currently India's T20I captain." => LOW credibility
+  it('Test 12: "Suryakumar Yadav is currently India\'s T20I captain." -> LOW credibility (Score <= 30)', () => {
+    const claim = "Suryakumar Yadav is currently India's T20I captain.";
+    const evSnippet =
+      "BCCI has officially confirmed that Shreyas Iyer has replaced Suryakumar Yadav as India's new T20I captain starting August 2026.";
+    const evTitle = 'BCCI Leadership Announcement';
+
+    const stance = stanceEvaluatorService.evaluateDeterministic(claim, evSnippet, evTitle, true);
+    assert.strictEqual(stance.relation, 'contradicts');
+    assert.strictEqual(stance.stanceScore, -1);
+
+    const extClaim: ExtractedClaim = {
+      id: 'cl-12',
+      text: claim,
+      importance: 0.85,
+      claim_type: 'temporal',
+      classification: 'CURRENT_EVENT',
+      isVerifiable: true,
+    };
+
+    const evidence: RetrievedEvidenceItem = {
+      id: 'ev-12',
+      claimId: 'cl-12',
+      sourceName: 'BCCI Official',
+      sourceTier: 1,
+      sourceReliability: 98,
+      title: evTitle,
+      publishedDate: '2026-08-22',
+      evidenceText: evSnippet,
+      relationToClaim: 'CONTRADICTS',
+      relevance: 'direct',
+      confidence: 98,
+      credibilityScore: 98,
+      relevanceScore: 1.0,
+      domain: 'bcci.tv',
+      relation: 'contradicts',
+    };
+
+    const articleMeta: ArticleMetadata = {
+      title: 'Cricket News',
+      author: null,
+      publishedAt: null,
+      publisher: null,
+      url: null,
+      text: claim,
+    };
+
+    const scoreResult = credibilityScorerService.computeCredibilityScore(articleMeta, [extClaim], [evidence]);
+    assert.ok(scoreResult.score <= 30, `Expected score <= 30 for replaced captain, got ${scoreResult.score}`);
+    assert.strictEqual(extClaim.relation, 'contradicts');
   });
 });

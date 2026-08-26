@@ -243,17 +243,48 @@ export const transformBackendResponseToUi = (
   };
 
   const finalScore = backendData.score ?? 0;
-  let recommendation = "Some claims could not be independently verified. Check the sources before sharing.";
-  if (finalScore >= 80) {
-    recommendation = "Most important claims are supported by authoritative independent evidence.";
-  } else if (finalScore >= 60) {
-    recommendation = "The content is mostly credible, though some assertions require additional corroboration.";
+  const isNonFactual = mappedClaims.length > 0 && mappedClaims.every((c) => c.isVerifiable === false);
+  const allUnclear = mappedClaims.length > 0 && mappedClaims.every((c) => c.status === 'unverified' && c.isVerifiable !== false);
+
+  let resolvedVerdictLabel = backendData.verdict || 'Needs Verification';
+
+  if (isNonFactual) {
+    resolvedVerdictLabel = mappedClaims[0].statusLabel || 'Not Objectively Verifiable';
+  } else if (allUnclear && rawEvidence.length === 0) {
+    resolvedVerdictLabel = 'Limited Evidence';
+  } else if (conflictingCount > 0 && finalScore >= 40 && finalScore <= 60) {
+    resolvedVerdictLabel = 'Conflicting Evidence';
+  } else if (finalScore >= 85) {
+    resolvedVerdictLabel = 'Very High Credibility';
+  } else if (finalScore >= 70) {
+    resolvedVerdictLabel = 'High Credibility';
+  } else if (finalScore >= 55) {
+    resolvedVerdictLabel = 'Moderate Credibility';
   } else if (finalScore >= 40) {
-    recommendation = "Some claims could not be independently verified. Check the sources before sharing.";
+    resolvedVerdictLabel = 'Low / Conflicting Evidence';
   } else if (finalScore >= 20) {
-    recommendation = "One or more important claims conflict with reliable independent evidence.";
+    resolvedVerdictLabel = 'Very Low Credibility';
   } else {
-    recommendation = "Major factual claims are contradicted by strong independent evidence.";
+    resolvedVerdictLabel = 'Extremely Low Credibility';
+  }
+
+  let recommendation = "Insufficient reliable evidence was found to confidently assess this claim.";
+  if (isNonFactual) {
+    recommendation = "This is a theological, subjective, or future-predictive claim that cannot be empirically evaluated as fact.";
+  } else if (conflictingCount > 0 && finalScore >= 40 && finalScore <= 60) {
+    recommendation = "Reliable sources provide conflicting information.";
+  } else if (finalScore >= 85) {
+    recommendation = "The claim is supported by multiple independent authoritative sources.";
+  } else if (finalScore >= 70) {
+    recommendation = "Multiple reliable sources support this claim, though minor details require verification.";
+  } else if (finalScore >= 55) {
+    recommendation = "Moderate credibility: partially corroborated by available records.";
+  } else if (finalScore >= 40) {
+    recommendation = "Low credibility or conflicting information found across evaluated sources.";
+  } else if (finalScore >= 20) {
+    recommendation = "The claim conflicts with recent reliable independent evidence.";
+  } else {
+    recommendation = "The claim conflicts with multiple recent authoritative sources.";
   }
 
   return {
@@ -270,8 +301,8 @@ export const transformBackendResponseToUi = (
     wordCount: calculatedWordCount,
     credibilityScore: finalScore,
     confidenceLevel: backendData.confidence ?? (finalScore >= 80 ? 92 : 88),
-    verdict: mapVerdictToType(backendData.verdict),
-    verdictLabel: backendData.verdict || 'Needs Verification',
+    verdict: mapVerdictToType(resolvedVerdictLabel),
+    verdictLabel: resolvedVerdictLabel,
     summary: backendData.summary,
     limitations: backendData.limitations || [],
     executiveSummary: defaultSummary,

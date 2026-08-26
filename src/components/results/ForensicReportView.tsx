@@ -63,42 +63,66 @@ export const ForensicReportView: React.FC<ForensicReportViewProps> = ({ result }
               </span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-surface-container-low p-5 rounded-lg border border-outline-variant/60 mb-6">
-              <div>
-                <div className="text-outline uppercase text-[11px] tracking-wider mb-1 font-semibold font-label-caps">
-                  Overall Credibility Score
-                </div>
-                <div className="text-2xl md:text-3xl font-extrabold font-mono text-on-background">
-                  {result.credibilityScore} <span className="text-base text-outline font-normal">/ 100</span>
-                </div>
-              </div>
+            {(() => {
+              const isNonFactual =
+                typeof result.verdictLabel === 'string' &&
+                (result.verdictLabel.toUpperCase().includes('THEOLOGICAL') ||
+                  result.verdictLabel.toUpperCase().includes('OPINION') ||
+                  result.verdictLabel.toUpperCase().includes('PREDICTION') ||
+                  result.verdictLabel.toUpperCase().includes('LIMITED EVIDENCE'));
 
-              <div>
-                <div className="text-outline uppercase text-[11px] tracking-wider mb-1 font-semibold font-label-caps">
-                  Final Verdict
-                </div>
-                <div
-                  className={`text-base md:text-lg font-bold font-label-caps ${
-                    result.credibilityScore >= 70
-                      ? 'text-emerald-700'
-                      : result.credibilityScore >= 40
-                      ? 'text-amber-700'
-                      : 'text-red-700'
-                  }`}
-                >
-                  {result.verdictLabel.toUpperCase()}
-                </div>
-              </div>
+              return (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-surface-container-low p-5 rounded-lg border border-outline-variant/60 mb-6">
+                  <div>
+                    <div className="text-outline uppercase text-[11px] tracking-wider mb-1 font-semibold font-label-caps">
+                      Overall Credibility Score
+                    </div>
+                    <div className="text-2xl md:text-3xl font-extrabold font-mono text-on-background">
+                      {isNonFactual ? (
+                        <span>
+                          N/A{' '}
+                          <span className="text-xs text-outline font-normal font-sans">
+                            ({result.verdictLabel.toUpperCase().includes('LIMITED') ? 'Low Coverage' : 'Non-Factual'})
+                          </span>
+                        </span>
+                      ) : (
+                        <span>
+                          {result.credibilityScore} <span className="text-base text-outline font-normal">/ 100</span>
+                        </span>
+                      )}
+                    </div>
+                  </div>
 
-              <div>
-                <div className="text-outline uppercase text-[11px] tracking-wider mb-1 font-semibold font-label-caps">
-                  Verification Confidence
+                  <div>
+                    <div className="text-outline uppercase text-[11px] tracking-wider mb-1 font-semibold font-label-caps">
+                      Final Verdict
+                    </div>
+                    <div
+                      className={`text-base md:text-lg font-bold font-label-caps ${
+                        isNonFactual
+                          ? 'text-purple-700'
+                          : result.credibilityScore >= 70
+                          ? 'text-emerald-700'
+                          : result.credibilityScore >= 40
+                          ? 'text-amber-700'
+                          : 'text-red-700'
+                      }`}
+                    >
+                      {result.verdictLabel.toUpperCase()}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="text-outline uppercase text-[11px] tracking-wider mb-1 font-semibold font-label-caps">
+                      Verification Confidence
+                    </div>
+                    <div className="text-2xl md:text-3xl font-extrabold font-mono text-primary">
+                      {isNonFactual ? 'N/A' : `${result.confidenceLevel}%`}
+                    </div>
+                  </div>
                 </div>
-                <div className="text-2xl md:text-3xl font-extrabold font-mono text-primary">
-                  {result.confidenceLevel}%
-                </div>
-              </div>
-            </div>
+              );
+            })()}
 
             <h1 className="font-headline-lg text-xl md:text-2xl lg:text-3xl text-on-background font-bold mb-4 leading-snug">
               {result.title}
