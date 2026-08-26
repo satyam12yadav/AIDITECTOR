@@ -72,17 +72,17 @@ EVIDENCE TEXT: "${evidenceSnippet}"
 
 STRICT CLAIM-VERIFICATION RULES:
 1. "relation":
-   - "supports" (+1): The evidence explicitly establishes the same factual proposition as the claim.
-   - "contradicts" (-1): The evidence explicitly states the OPPOSITE factual proposition (e.g. claim states Asia is largest, evidence states Africa is largest or Asia is smallest).
-   - "unclear" (0): The evidence is related to the topic, discusses another fact, or is insufficient to establish either the claim or its opposite.
-   CRITICAL: Related != Contradicts. Do NOT mark "contradicts" merely because the evidence mentions another detail or fact.
+   - "supports" (+1): The evidence explicitly establishes the same factual proposition as the claim (e.g. claim says Ram Mandir is in Ayodhya, evidence states Ram Mandir in Ayodhya).
+   - "contradicts" (-1): The evidence explicitly establishes a CONFLICTING factual proposition for the same entity/attribute (e.g. claim says Ram Mandir is in Pakistan, evidence states Ram Mandir is located in Ayodhya, India).
+   - "unclear" (0): The evidence is related to the topic or mentions the entity, but does not establish or contradict the claim.
+   CRITICAL: Do NOT classify as "supports" just because the evidence mentions the same country or entity in another context (e.g. "Pakistan condemns Ram Mandir in Ayodhya" CONTRADICTS "Ram Mandir is in Pakistan").
 
 2. "relevance":
-   - "direct": The evidence directly addresses and answers the specific assertion in the claim.
-   - "related": The evidence mentions the entity or general topic, but does not prove or disprove the assertion.
+   - "direct": The evidence directly addresses the specific attribute (e.g. location, status) of the entity in the claim.
+   - "related": The evidence mentions the entity or general topic, but does not answer the specific assertion.
    - "irrelevant": The evidence is off-topic.
 
-3. "keyEvidence": Extract the exact verbatim fact/phrase from the evidence that answers the claim (or empty string if none).
+3. "keyEvidence": Extract the exact verbatim fact/phrase from the evidence that answers the claim.
 
 Return STRICT JSON only:
 {
@@ -153,7 +153,7 @@ Return STRICT JSON only:
   }
 
   /**
-   * Deterministic exact claim-level verification fallback
+   * Deterministic exact claim-level verification fallback with Entity-Attribute-Value (EAV) evaluation
    */
   public evaluateDeterministic(
     claimText: string,
@@ -185,17 +185,88 @@ Return STRICT JSON only:
       }
     }
 
-    // 2. Superlatives & General Knowledge Predicate Verification
-    // e.g. "Asia is the largest continent" vs "Asia is the smallest continent"
-    const isSuperlativeClaim = /\b(largest|biggest|smallest|highest|tallest|deepest|longest|fastest|coldest|hottest|most populous)\b/i.test(claimLower);
-    if (isSuperlativeClaim) {
-      const claimHasLargest = /\b(largest|biggest|most populous)\b/i.test(claimLower);
-      const claimHasSmallest = /\b(smallest|least populous)\b/i.test(claimLower);
+    // 2. Entity-Attribute-Value (EAV) Triple Resolution
+    const claimTriple = entityExtractorService.extractClaimTriple(claimText);
+
+    // EAV Check: Location Claims (e.g. "Ram Mandir is in Pakistan", "India is in South America", "Delhi is in India")
+    if (claimTriple && claimTriple.attribute === 'location') {
+      const claimedEntity = claimTriple.entity.toLowerCase();
+      const claimedLoc = claimTriple.claimValue.toLowerCase();
+
+      const evidenceEntities = entityExtractorService.extractEntities(`${evidenceTitle} ${evidenceSnippet}`);
+      const evidenceLocs = evidenceEntities.locations.filter((l) => l !== 'uk' && l !== 'us' && l !== 'usa');
+
+      // Does the evidence discuss the claimed entity?
+      const discussesEntity =
+        combined.includes(claimedEntity) ||
+        (claimedEntity.includes('ram mandir') && (combined.includes('ram mandir') || combined.includes('ram temple') || combined.includes('ayodhya temple') || combined.includes('ram janmbhoomi'))) ||
+        (claimedEntity.includes('india') && (combined.includes('india') || combined.includes('republic of india') || combined.includes('bharat'))) ||
+        (claimedEntity.includes('asia') && (combined.includes('asia') || combined.includes('eurasia')));
+
+      if (discussesEntity && evidenceLocs.length > 0) {
+        // Evaluate location compatibility for the entity
+        let hasDirectContradiction = false;
+        let hasDirectSupport = false;
+        let conflictingLoc = '';
+        let supportingLoc = '';
+
+        const claimLocList = entityExtractorService.extractEntities(claimedLoc).locations;
+        if (claimLocList.length === 0) {
+          claimLocList.push(claimedLoc);
+        }
+
+        for (const cLoc of claimLocList) {
+          for (const eLoc of evidenceLocs) {
+            const compat = entityExtractorService.checkLocationCompatibility(cLoc, eLoc);
+            if (compat === 'CONTRADICTORY') {
+              hasDirectContradiction = true;
+              conflictingLoc = eLoc;
+            } else if (compat === 'SUPPORTIVE') {
+              hasDirectSupport = true;
+              supportingLoc = eLoc;
+            }
+          }
+        }
+
+        // Location contradiction takes precedence when the entity's true location is documented
+        if (hasDirectContradiction) {
+          return {
+            relation: 'contradicts',
+            relationToClaim: 'CONTRADICTS',
+            relevance: 'direct',
+            confidence: 95,
+            reasoning: `Direct location conflict: ${claimTriple.entity} is documented in '${conflictingLoc}', which directly contradicts the claim that it is in '${claimTriple.claimValue}'.`,
+            keyEvidence: evidenceSnippet.slice(0, 120),
+            stanceScore: -1,
+            relevanceScore: 1.0,
+            explanation: `Direct location conflict: ${claimTriple.entity} is located in ${conflictingLoc}, not ${claimTriple.claimValue}.`,
+          };
+        }
+
+        if (hasDirectSupport) {
+          return {
+            relation: 'supports',
+            relationToClaim: 'SUPPORTS',
+            relevance: 'direct',
+            confidence: 95,
+            reasoning: `Geographic corroboration: Evidence confirms location in '${supportingLoc}', establishing that ${claimTriple.entity} is in '${claimTriple.claimValue}'.`,
+            keyEvidence: evidenceSnippet.slice(0, 120),
+            stanceScore: 1,
+            relevanceScore: 1.0,
+            explanation: `Geographic corroboration: Evidence confirms location in '${supportingLoc}'.`,
+          };
+        }
+      }
+    }
+
+    // EAV Check: Superlative Claims (e.g. "Asia is the largest continent", "Asia is the smallest continent")
+    if (claimTriple && claimTriple.attribute === 'superlative') {
+      const claimVal = claimTriple.claimValue.toLowerCase();
+      const claimHasLargest = /\b(largest|biggest|most populous)\b/i.test(claimVal);
+      const claimHasSmallest = /\b(smallest|least populous)\b/i.test(claimVal);
 
       const evHasLargest = /\b(largest continent|world's largest|biggest in terms of|largest of the|largest land area)\b/i.test(combined);
-      const evHasSmallest = /\b(smallest continent|world's smallest)\b/i.test(combined);
 
-      // Superlative: Asia is largest continent
       if (claimLower.includes('asia') && claimLower.includes('continent')) {
         if (claimHasLargest && evHasLargest) {
           return {
@@ -224,89 +295,9 @@ Return STRICT JSON only:
           };
         }
       }
-
-      // General entity superlative matching
-      if (claimHasLargest && evHasLargest && this.hasEntityOverlap(claimLower, combined)) {
-        return {
-          relation: 'supports',
-          relationToClaim: 'SUPPORTS',
-          relevance: 'direct',
-          confidence: 92,
-          reasoning: 'Evidence explicitly corroborates the superlative attribute stated in the claim.',
-          keyEvidence: evidenceSnippet.slice(0, 100),
-          stanceScore: 1,
-          relevanceScore: 1.0,
-          explanation: 'Evidence explicitly corroborates the superlative attribute stated in the claim.',
-        };
-      }
     }
 
-    // 3. Location Containment & Placement Verification
-    // ONLY check location conflicts if the claim explicitly asserts a location relationship (in, located in, situated in, part of, capital of)
-    const isLocationAssertion = /\b(is in|located in|situated in|part of|entirely in|capital of|lies in|extends to)\b/i.test(claimLower);
-    if (isLocationAssertion) {
-      const claimEntities = entityExtractorService.extractEntities(claimText);
-      const evidenceEntities = entityExtractorService.extractEntities(`${evidenceTitle} ${evidenceSnippet}`);
-
-      // Check impossible / contradictory placement: e.g. "Asia is located entirely in South America"
-      if (claimLower.includes('south america') && (claimLower.includes('asia') || combined.includes('asia') || combined.includes('eurasia') || combined.includes('eastern hemisphere'))) {
-        return {
-          relation: 'contradicts',
-          relationToClaim: 'CONTRADICTS',
-          relevance: 'direct',
-          confidence: 95,
-          reasoning: 'Geographic conflict: Asia is located in the Eastern Hemisphere / Eurasia, not South America.',
-          keyEvidence: 'Occupies the giant Eurasian landmass',
-          stanceScore: -1,
-          relevanceScore: 1.0,
-          explanation: 'Geographic conflict: Evidence documents Asia in the Eastern Hemisphere / Eurasia.',
-        };
-      }
-
-      // Check specific containment (e.g. Ram Mandir in Ayodhya / India, India in Asia, Asia in Northern Hemisphere)
-      if (claimLower.includes('northern hemisphere') && (combined.includes('northern hemisphere') || combined.includes('eastern hemisphere') || combined.includes('eurasian'))) {
-        return {
-          relation: 'supports',
-          relationToClaim: 'SUPPORTS',
-          relevance: 'direct',
-          confidence: 95,
-          reasoning: 'Geographic corroboration: Authoritative reference confirms Asia is situated primarily in the Northern and Eastern Hemispheres.',
-          keyEvidence: 'Located mostly in the Northern Hemisphere',
-          stanceScore: 1,
-          relevanceScore: 1.0,
-          explanation: 'Authoritative reference confirms Asia is situated in the Northern Hemisphere.',
-        };
-      }
-
-      if (claimEntities.locations.length > 0 && evidenceEntities.locations.length > 0) {
-        for (const cLoc of claimEntities.locations) {
-          for (const eLoc of evidenceEntities.locations) {
-            // Ignore noise from pronunciation guides (e.g. UK / US)
-            if ((eLoc === 'uk' || eLoc === 'usa' || eLoc === 'us') && !claimEntities.locations.includes(eLoc)) {
-              continue;
-            }
-
-            const compat = entityExtractorService.checkLocationCompatibility(cLoc, eLoc);
-            if (compat === 'SUPPORTIVE') {
-              return {
-                relation: 'supports',
-                relationToClaim: 'SUPPORTS',
-                relevance: 'direct',
-                confidence: 95,
-                reasoning: `Geographic corroboration: Evidence confirms location in '${eLoc}', which is consistent with '${cLoc}'.`,
-                keyEvidence: `Located in ${eLoc}`,
-                stanceScore: 1,
-                relevanceScore: 1.0,
-                explanation: `Geographic corroboration: Evidence confirms location in '${eLoc}', which is consistent with '${cLoc}'.`,
-              };
-            }
-          }
-        }
-      }
-    }
-
-    // 4. Geographic Features / Elements Verification
-    // e.g. "Asia has mountains" / "Asia has many countries"
+    // 3. Geographic Features / Elements Verification
     if (claimLower.includes('mountain') && (combined.includes('mountain') || combined.includes('himalaya') || combined.includes('everest') || combined.includes('range'))) {
       return {
         relation: 'supports',
@@ -335,7 +326,7 @@ Return STRICT JSON only:
       };
     }
 
-    // 5. Time-Sensitive Ruling Party / Political Status Check
+    // 4. Time-Sensitive Ruling Party / Political Status Check
     const isRulingPartyClaim =
       /\b(ruler party|ruling party|in power|runs the government|union government|forms government|prime minister|narendra modi)\b/i.test(claimLower) &&
       /\b(bjp|bharatiya janata party|nda)\b/i.test(claimLower);
@@ -361,32 +352,7 @@ Return STRICT JSON only:
       }
     }
 
-    // 6. Generic Exact & High-Overlap Corroboration
-    const keywords = claimLower
-      .replace(/[^\w\s]/g, '')
-      .split(/\s+/)
-      .filter((w) => w.length > 3 && !['that', 'this', 'with', 'from', 'have', 'were', 'about', 'what', 'which'].includes(w));
-
-    let overlap = 0;
-    for (const kw of keywords) {
-      if (combined.includes(kw)) overlap++;
-    }
-
-    if (keywords.length > 0 && overlap / keywords.length >= 0.75) {
-      return {
-        relation: 'supports',
-        relationToClaim: 'SUPPORTS',
-        relevance: 'direct',
-        confidence: 85,
-        reasoning: 'Retrieved evidence directly corroborates core terms and assertions of the claim.',
-        keyEvidence: evidenceSnippet.slice(0, 120),
-        stanceScore: 1,
-        relevanceScore: 1.0,
-        explanation: 'Retrieved evidence directly corroborates core terms and assertions of the claim.',
-      };
-    }
-
-    // 7. Default: Unclear / Insufficient (NOT Contradiction)
+    // 5. Default: Unclear / Neutral (Absence of evidence is NOT contradiction)
     return {
       relation: 'unclear',
       relationToClaim: 'NEUTRAL',
@@ -398,11 +364,6 @@ Return STRICT JSON only:
       relevanceScore: 0.2,
       explanation: 'Evidence mentions related subjects, but does not provide direct factual verification or contradiction of the exact assertion.',
     };
-  }
-
-  private hasEntityOverlap(claim: string, evidence: string): boolean {
-    const words = claim.split(/\s+/).filter((w) => w.length > 4);
-    return words.some((w) => evidence.includes(w));
   }
 }
 

@@ -10,6 +10,7 @@ import {
 } from '../types/api.js';
 import { sourceRegistry } from './sourceRegistry.service.js';
 import { stanceEvaluatorService } from './stanceEvaluator.service.js';
+import { entityExtractorService } from './entityExtractor.service.js';
 import { googleFactCheckService } from './googleFactCheck.service.js';
 
 interface RawCandidate {
@@ -73,19 +74,19 @@ export class EvidenceRetrieverService {
     const cleaned = claimText.replace(/[“”"'.,;!?()]/g, ' ').replace(/\s+/g, ' ').trim();
     const queries = new Set<string>();
 
-    // 1. Primary Clean Query (Filtered stop words)
-    const stopWords = new Set(['is', 'are', 'was', 'were', 'the', 'a', 'an', 'of', 'and', 'that', 'with', 'from', 'at', 'in', 'on', 'to']);
-    const words = cleaned.split(' ').filter(Boolean);
-    const coreWords = words.filter((w) => !stopWords.has(w.toLowerCase()) || w.length > 5);
+    const claimTriple = entityExtractorService.extractClaimTriple(claimText);
 
-    if (coreWords.length >= 2) {
-      queries.add(coreWords.join(' '));
+    // 1. If location assertion, generate focused entity location query
+    if (claimTriple && claimTriple.attribute === 'location') {
+      queries.add(`${claimTriple.entity} location`);
+      queries.add(`${claimTriple.entity} located in`);
+      queries.add(`${claimTriple.entity} ${claimTriple.claimValue}`);
     }
 
     // 2. Semantic query expansion for superlatives & comparisons
     if (/\b(largest|biggest|smallest|highest|tallest|deepest|longest|fastest|coldest|hottest|most populous)\b/i.test(cleaned)) {
-      const superlativeMatch = cleaned.match(/\b(largest|biggest|smallest|highest|tallest|deepest|longest|fastest|coldest|hottest|most populous)\s+(\w+)/i);
-      const subject = words[0];
+      const superlativeMatch = cleaned.match(/\b(largest|biggest|smallest|highest|tallest|deepest|longest|fastest|coldest|hottest|most populous)\s*(\w+)?/i);
+      const subject = claimTriple?.entity || cleaned.split(' ')[0];
       if (superlativeMatch && subject) {
         queries.add(`${subject} ${superlativeMatch[0]}`);
         queries.add(`${subject} ${superlativeMatch[0]} by area`);
@@ -93,19 +94,22 @@ export class EvidenceRetrieverService {
       }
     }
 
-    // 3. Location & Geographical queries
-    if (/\b(located in|situated in|country in|capital of|continent of|island in|ocean|river)\b/i.test(cleaned)) {
-      queries.add(cleaned.replace(/\b(is|are|was|were)\b/gi, '').replace(/\s+/g, ' ').trim());
-    }
-
-    // 4. Time-sensitive Political queries
+    // 3. Time-sensitive Political queries
     if (/ruler party/i.test(cleaned)) {
       const fixed = cleaned.replace(/ruler party/i, 'ruling party');
       queries.add(`${fixed} Union government`);
     }
 
+    // 4. Primary Clean Query (Filtered stop words)
     if (queries.size === 0) {
-      queries.add(cleaned);
+      const stopWords = new Set(['is', 'are', 'was', 'were', 'the', 'a', 'an', 'of', 'and', 'that', 'with', 'from', 'at', 'in', 'on', 'to']);
+      const words = cleaned.split(' ').filter(Boolean);
+      const coreWords = words.filter((w) => !stopWords.has(w.toLowerCase()) || w.length > 5);
+      if (coreWords.length >= 2) {
+        queries.add(coreWords.join(' '));
+      } else {
+        queries.add(cleaned);
+      }
     }
 
     return Array.from(queries).slice(0, 3);
@@ -155,7 +159,7 @@ export class EvidenceRetrieverService {
         })
         .catch(() => {}),
 
-      // 2. Authoritative Knowledge & Reference Repositories (Encyclopædia Britannica, National Geographic, ThoughtCo, Wikipedia)
+      // 2. Authoritative Knowledge & Reference Repositories (Britannica, National Geographic, ThoughtCo, Wikipedia)
       this.fetchAuthoritativeReferences(claim, searchQueries)
         .then((krs) => {
           for (const kr of krs) {
@@ -224,6 +228,8 @@ export class EvidenceRetrieverService {
     // -------------------------------------------------------------
     // Concurrent Claim-Level Stance Evaluation
     // -------------------------------------------------------------
+    const claimTriple = entityExtractorService.extractClaimTriple(claim.text);
+
     const stancePromises = prioritizedCandidates.map(async (candidate) => {
       const sourceEval =
         sourceRegistry.getSourceCredibility(candidate.publisher) ||
@@ -259,17 +265,19 @@ export class EvidenceRetrieverService {
           ? 'news'
           : 'other');
 
-      // Requirement 2: Explicit per-evidence debug logging
+      // Requirement 10: Explicit Decision Logging
       console.log(`\n------------------------------------------------------------`);
-      console.log(`CLAIM:\n${claim.text}`);
-      console.log(`\nSOURCE:\n${candidate.url}`);
-      console.log(`\nDOMAIN:\n${sourceEval.domain || resolvedName}`);
-      console.log(`\nEVIDENCE TITLE:\n${decode(candidate.title)}`);
-      console.log(`\nEVIDENCE SNIPPET:\n${decode(candidate.snippet)}`);
-      console.log(`\nSOURCE REGISTRY TIER:\nTier ${sourceEval.credibilityTier} (${sourceEval.category})`);
-      console.log(`\nGEMINI RELATION:\n${stance.relation}`);
-      console.log(`\nSTANCE SCORE:\n${stance.stanceScore > 0 ? '+1' : stance.stanceScore < 0 ? '-1' : '0'}`);
-      console.log(`\nGEMINI REASONING:\n${stance.reasoning}`);
+      console.log(`CLAIM: ${claim.text}`);
+      if (claimTriple) {
+        console.log(`ENTITY: ${claimTriple.entity}`);
+        console.log(`ATTRIBUTE: ${claimTriple.attribute}`);
+        console.log(`CLAIM VALUE: ${claimTriple.claimValue}`);
+      }
+      console.log(`SOURCE: ${candidate.url}`);
+      console.log(`SOURCE TIER: Tier ${sourceEval.credibilityTier} (${sourceEval.category})`);
+      console.log(`RELATION: ${stance.relation}`);
+      console.log(`STANCE SCORE: ${stance.stanceScore > 0 ? '+1' : stance.stanceScore < 0 ? '-1' : '0'}`);
+      console.log(`REASONING: ${stance.reasoning}`);
       console.log(`------------------------------------------------------------\n`);
 
       return {
@@ -304,10 +312,12 @@ export class EvidenceRetrieverService {
       }
     }
 
-    // Rank evidence: Direct support from higher tier sources comes first
+    // Rank evidence: Direct contradict or direct support from higher tier sources comes first
     evidenceList.sort((a, b) => {
-      const scoreA = a.finalContribution * 0.7 + a.relevanceScore * 30 + (6 - a.sourceTier) * 5;
-      const scoreB = b.finalContribution * 0.7 + b.relevanceScore * 30 + (6 - b.sourceTier) * 5;
+      const isContradictA = a.relationToClaim === 'CONTRADICTS' ? 100 : 0;
+      const isContradictB = b.relationToClaim === 'CONTRADICTS' ? 100 : 0;
+      const scoreA = isContradictA + a.finalContribution * 0.7 + a.relevanceScore * 30 + (6 - a.sourceTier) * 5;
+      const scoreB = isContradictB + b.finalContribution * 0.7 + b.relevanceScore * 30 + (6 - b.sourceTier) * 5;
       return scoreB - scoreA;
     });
 
@@ -325,14 +335,19 @@ export class EvidenceRetrieverService {
     const entities = claim.entities;
 
     const subjectsToQuery: string[] = [];
-    if (entities?.locations && entities.locations.length > 0) {
-      subjectsToQuery.push(...entities.locations);
-    }
+
+    // Prioritize subject entities (monuments, events, people, organizations) over locations
     if (entities?.events && entities.events.length > 0) {
       subjectsToQuery.push(...entities.events);
     }
     if (entities?.organizations && entities.organizations.length > 0) {
       subjectsToQuery.push(...entities.organizations);
+    }
+    if (entities?.people && entities.people.length > 0) {
+      subjectsToQuery.push(...entities.people);
+    }
+    if (entities?.locations && entities.locations.length > 0) {
+      subjectsToQuery.push(...entities.locations);
     }
 
     if (subjectsToQuery.length === 0) {
