@@ -138,7 +138,26 @@ export class EvidenceRetrieverService {
       }
     }
 
-    // 7. Time-sensitive political / governance queries
+    // 7. Role Holder & Leadership assertion
+    if (claimTriple && claimTriple.attribute === 'role_holder') {
+      const roleStr = claimTriple.role || 'captain';
+      const holderStr = claimTriple.holder || '';
+      queries.add(`${claimTriple.entity} current`);
+      queries.add(`${claimTriple.entity} new`);
+      if (holderStr) {
+        queries.add(`${holderStr} ${roleStr}`);
+        queries.add(`${holderStr} replaced ${roleStr}`);
+      }
+    }
+
+    // 8. Transition & Replacement assertion
+    if (claimTriple && claimTriple.attribute === 'transition') {
+      queries.add(`${claimTriple.holder} replaced ${claimTriple.replacedEntity}`);
+      queries.add(`${claimTriple.holder} new ${claimTriple.role}`);
+      queries.add(`${claimTriple.entity} captain`);
+    }
+
+    // 9. Time-sensitive political / governance queries
     if (/ruler party|ruling party|prime minister/i.test(cleaned)) {
       const fixed = cleaned.replace(/ruler party/i, 'ruling party');
       queries.add(`${fixed} Union government`);

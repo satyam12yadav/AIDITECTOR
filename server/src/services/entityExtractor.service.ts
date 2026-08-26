@@ -10,6 +10,9 @@ export interface ClaimTriple {
     | 'temporal'
     | 'scientific'
     | 'ruling_party'
+    | 'role_holder'
+    | 'transition'
+    | 'ownership'
     | 'quantity'
     | 'comparison'
     | 'general';
@@ -17,6 +20,10 @@ export interface ClaimTriple {
   unit?: string;
   numericVal?: number;
   isNegated?: boolean;
+  temporalType?: 'CURRENT' | 'PAST' | 'NEVER' | 'FUTURE';
+  role?: string;
+  holder?: string;
+  replacedEntity?: string;
 }
 
 export interface EvidenceTriple {
@@ -167,7 +174,7 @@ export class EntityExtractorService {
       dates.push(d.trim());
     }
 
-    // 4. Organizations
+    // 4. Organizations & Entities
     const knownOrgs = [
       'rbi', 'reserve bank of india', 'isro', 'nasa', 'who', 'un', 'supreme court',
       'high court', 'election commission', 'pib', 'bjp', 'congress', 'aap', 'parliament',
@@ -182,7 +189,18 @@ export class EntityExtractorService {
       }
     }
 
-    // 5. Specific Monuments / Temples / Subjects
+    // 5. People names
+    const knownPeople = [
+      'suryakumar yadav', 'shreyas iyer', 'rohit sharma', 'virat kohli', 'narendra modi',
+      'hardik pandya', 'jasprit bumrah', 'rahul dravid', 'gautam gambhir'
+    ];
+    for (const p of knownPeople) {
+      if (lower.includes(p)) {
+        people.push(p);
+      }
+    }
+
+    // 6. Specific Monuments / Temples / Subjects
     if (/ram mandir|ram janmbhoomi|ram temple/i.test(cleanText)) {
       events.push('Ram Mandir');
     }
@@ -210,10 +228,68 @@ export class EntityExtractorService {
     const clean = this.normalizeClaim(claimText);
     const lower = clean.toLowerCase();
 
-    // Check for negation (e.g. "India is not located in Asia")
-    const isNegated = /\b(not|never|neither|cannot|is not|are not|was not|does not|did not)\b/i.test(clean);
+    // Check for negation (e.g. "India is not located in Asia", "has never been")
+    const isNegated = /\b(not|never|neither|cannot|is not|are not|was not|does not|did not|has never been)\b/i.test(clean);
 
-    // 1. Capital assertion: e.g. "The capital of India is Mumbai", "India's capital city is New Delhi"
+    // 1. Succession / Replacement Assertion (e.g. "Shreyas Iyer replaced Suryakumar Yadav as India's T20I captain")
+    const replaceMatch = clean.match(/^([a-zA-Z\s]+?)\s+(?:replaced|replaces|took over from|succeeded)\s+([a-zA-Z\s]+?)\s+as\s+(?:the\s+)?([a-zA-Z0-9'\s-]+?)[.]?$/i);
+    if (replaceMatch) {
+      return {
+        entity: replaceMatch[3].trim(),
+        attribute: 'transition',
+        holder: replaceMatch[1].trim(),
+        replacedEntity: replaceMatch[2].trim(),
+        claimValue: `${replaceMatch[1].trim()} replaced ${replaceMatch[2].trim()}`,
+        role: replaceMatch[3].trim(),
+        temporalType: 'CURRENT',
+        isNegated,
+      };
+    }
+
+    // 2. Role / Captaincy / Leadership / Office Assertion (e.g. "Now T20 captain of India is Suryakumar Yadav", "Suryakumar Yadav is currently India's T20I captain", "John is the CEO")
+    // 2a. "Now/Currently [Role] of [Entity] is [Holder]" or "Now [Role] is [Holder]"
+    const rolePrefixMatch = clean.match(/^(?:now\s+|currently\s+)?(?:the\s+)?(?:current\s+)?([a-zA-Z0-9'\s-]+?\s+(?:captain|ceo|president|prime minister|chief minister|coach|manager|head|director|leader))\s+(?:of\s+([a-zA-Z0-9'\s-]+?)\s+)?is\s+([a-zA-Z\s]+?)[.]?$/i);
+    if (rolePrefixMatch) {
+      const roleName = rolePrefixMatch[1].trim();
+      const entityContext = rolePrefixMatch[2] ? rolePrefixMatch[2].trim() : '';
+      const holderName = rolePrefixMatch[3].trim();
+      const isPast = /\b(was|formerly|previously|earlier)\b/i.test(clean);
+      const isNever = /\b(never|has never)\b/i.test(clean);
+
+      return {
+        entity: entityContext ? `${entityContext} ${roleName}` : roleName,
+        attribute: 'role_holder',
+        role: roleName.toLowerCase(),
+        holder: holderName,
+        claimValue: holderName,
+        temporalType: isNever ? 'NEVER' : isPast ? 'PAST' : 'CURRENT',
+        isNegated,
+      };
+    }
+
+    // 2b. "[Holder] (is|was|has never been) currently/now [Role/Possessive]"
+    // e.g. "Shreyas Iyer is currently India's T20I captain", "Suryakumar Yadav was India's T20I captain earlier in 2026", "Suryakumar Yadav has never been India's T20I captain"
+    const holderPrefixMatch = clean.match(/^([a-zA-Z\s]+?)\s+(is|was|has never been)\s+(?:currently\s+|now\s+|the current\s+)?(?:the\s+)?([a-zA-Z0-9'\s-]+?\s+(?:captain|ceo|president|prime minister|chief minister|coach|manager))(?:\s+of\s+([a-zA-Z0-9'\s-]+))?(?:\s+(?:earlier\s+in\s+\d{4}|earlier|previously|formerly|in\s+\d{4}))?[.]?$/i);
+    if (holderPrefixMatch) {
+      const holderName = holderPrefixMatch[1].trim();
+      const verb = holderPrefixMatch[2].toLowerCase();
+      const roleName = holderPrefixMatch[3].trim();
+      const entityContext = holderPrefixMatch[4] ? holderPrefixMatch[4].trim() : '';
+      const isNever = verb.includes('never') || lower.includes('never');
+      const isPast = verb === 'was' || lower.includes('earlier') || lower.includes('previously');
+
+      return {
+        entity: entityContext ? `${entityContext} ${roleName}` : roleName,
+        attribute: 'role_holder',
+        role: roleName.toLowerCase(),
+        holder: holderName,
+        claimValue: holderName,
+        temporalType: isNever ? 'NEVER' : isPast ? 'PAST' : 'CURRENT',
+        isNegated,
+      };
+    }
+
+    // 3. Capital assertion: e.g. "The capital of India is Mumbai", "India's capital city is New Delhi"
     const capMatch = clean.match(/(?:capital(?: city)? of\s+([a-zA-Z\s]+?)\s+is|([a-zA-Z\s]+?)(?:'s|\s+)\s*capital(?: city)?\s+is)\s+([a-zA-Z\s]+?)[.]?$/i);
     if (capMatch) {
       const rawEntity = (capMatch[1] || capMatch[2] || 'India').trim();
@@ -226,7 +302,7 @@ export class EntityExtractorService {
       };
     }
 
-    // 2. Location assertion: e.g. "Ram Mandir is in Pakistan", "India is in South America", "India is not located in Asia"
+    // 4. Location assertion: e.g. "Ram Mandir is in Pakistan", "India is in South America", "India is not located in Asia"
     const locMatch = clean.match(/^(.+?)\s+(?:is not located in|is not in|is located in|is in|are located in|are in|is a country in|lies in|situated in)\s+(.+?)[.]?$/i);
     if (locMatch && locMatch[1] && locMatch[2]) {
       let rawEntity = locMatch[1].trim().replace(/\b(is|are|was|were)?\s*not\b/i, '').trim();
@@ -240,7 +316,7 @@ export class EntityExtractorService {
       };
     }
 
-    // 3. Astronomical / Physical Comparison: e.g. "The Earth is larger than the Sun"
+    // 5. Astronomical / Physical Comparison: e.g. "The Earth is larger than the Sun"
     const compMatch = clean.match(/(?:the\s+)?([a-zA-Z\s]+?)\s+is\s+(larger than|smaller than|bigger than|hotter than|colder than|brighter than)\s+(?:the\s+)?([a-zA-Z\s]+?)[.]?$/i);
     if (compMatch) {
       return {
@@ -251,7 +327,7 @@ export class EntityExtractorService {
       };
     }
 
-    // 4. Astronomical / Orbital Motion: e.g. "The Earth orbits the Sun"
+    // 6. Astronomical / Orbital Motion: e.g. "The Earth orbits the Sun"
     if (/\b(orbits the sun|revolves around the sun|rotates around the sun|orbits sun)\b/i.test(lower)) {
       return {
         entity: 'Earth',
@@ -261,7 +337,7 @@ export class EntityExtractorService {
       };
     }
 
-    // 5. Physical Constants: e.g. "Water freezes at approximately 0 degrees Celsius"
+    // 7. Physical Constants: e.g. "Water freezes at approximately 0 degrees Celsius"
     if (/\b(water freezes|freezing point of water|boiling point of water)\b/i.test(lower)) {
       const val = lower.includes('0') ? '0 degrees celsius' : lower.includes('100') ? '100 degrees celsius' : 'freezing point';
       return {
@@ -272,7 +348,7 @@ export class EntityExtractorService {
       };
     }
 
-    // 6. Numerical / Quantitative assertion: e.g. "India has a population of approximately 1.4 billion", "Mount Everest is approximately 8,849 meters high"
+    // 8. Numerical / Quantitative assertion: e.g. "India has a population of approximately 1.4 billion", "Mount Everest is approximately 8,849 meters high"
     const numMatch = clean.match(/(?:cost|population of|population is|has a population of|height of|is approximately|elevation of|create|worth)\s+(?:approximately|around|about)?\s*(₹?\s*\d+([,.]\d+)*\s*(?:crore|lakh|billion|million|trillion|percent|%|meters|metres|jobs)?)/i);
     if (numMatch && numMatch[1]) {
       const numStr = numMatch[1].replace(/,/g, '').trim();
@@ -287,7 +363,7 @@ export class EntityExtractorService {
       };
     }
 
-    // 7. Date / Temporal assertion: e.g. "Event happened on January 10", "Construction began on Monday", "completed by 2028"
+    // 9. Date / Temporal assertion: e.g. "Event happened on January 10", "Construction began on Monday", "completed by 2028"
     const dateMatch = clean.match(/(?:happened on|occurred on|held on|began on|completed by|inaugurated on)\s+([a-zA-Z0-9,\s]+?)[.]?$/i);
     if (dateMatch && dateMatch[1]) {
       return {
@@ -298,7 +374,7 @@ export class EntityExtractorService {
       };
     }
 
-    // 8. Superlative assertion: e.g. "Asia is the largest continent", "Asia is smallest continent"
+    // 10. Superlative assertion: e.g. "Asia is the largest continent", "Asia is smallest continent"
     if (/\b(largest|biggest|smallest|highest|tallest|deepest|longest|fastest|coldest|hottest|most populous)\b/i.test(lower)) {
       const superlative = lower.match(/\b(largest|biggest|smallest|highest|tallest|deepest|longest|fastest|coldest|hottest|most populous)\s*(?:continent|country|ocean|mountain|river|city)?/i);
       const subject = lower.includes('asia') ? 'Asia' : clean.split(' ')[0];
@@ -310,7 +386,7 @@ export class EntityExtractorService {
       };
     }
 
-    // 9. Ruling party assertion: e.g. "BJP is ruler party of India"
+    // 11. Ruling party assertion: e.g. "BJP is ruler party of India"
     if (/ruler party|ruling party|in power|holds power/i.test(lower)) {
       return {
         entity: lower.includes('bjp') ? 'BJP' : clean.split(' ')[0],
