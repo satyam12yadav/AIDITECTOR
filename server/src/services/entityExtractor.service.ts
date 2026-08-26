@@ -2,15 +2,26 @@ import { ExtractedEntities } from '../types/api.js';
 
 export interface ClaimTriple {
   entity: string;
-  attribute: 'location' | 'superlative' | 'numerical' | 'temporal' | 'ruling_party' | 'quantity' | 'general';
+  attribute:
+    | 'location'
+    | 'capital'
+    | 'superlative'
+    | 'numerical'
+    | 'temporal'
+    | 'scientific'
+    | 'ruling_party'
+    | 'quantity'
+    | 'comparison'
+    | 'general';
   claimValue: string;
   unit?: string;
   numericVal?: number;
+  isNegated?: boolean;
 }
 
 export interface EvidenceTriple {
   entity: string;
-  attribute: 'location' | 'superlative' | 'numerical' | 'temporal' | 'ruling_party' | 'quantity' | 'general';
+  attribute: string;
   evidenceValue: string;
   locations: string[];
   unit?: string;
@@ -99,11 +110,12 @@ const KNOWN_CONTINENTS = new Set([
 
 export class EntityExtractorService {
   /**
-   * Normalizes claim text
+   * Normalizes claim text with standard quotes
    */
   public normalizeClaim(claimText: string): string {
     return (claimText || '')
-      .replace(/[“”"']/g, ' ')
+      .replace(/[“”]/g, '"')
+      .replace(/[‘’]/g, "'")
       .replace(/\s+/g, ' ')
       .trim();
   }
@@ -141,8 +153,8 @@ export class EntityExtractorService {
       }
     }
 
-    // 2. Numbers & Quantities
-    const numMatches = cleanText.match(/(₹\s*\d+([,.]\d+)*\s*(crore|lakh)?|\$\s*\d+([,.]\d+)*\s*(billion|million|trillion)?|\b\d+([,.]\d+)*\s*(crore|lakh|billion|million|trillion|percent|%|cases|deaths|tons|km|miles|jobs)\b|\b\d{1,4}\b)/gi) || [];
+    // 2. Numbers & Quantities (including decimal numbers & elevations)
+    const numMatches = cleanText.match(/(₹\s*\d+([,.]\d+)*\s*(crore|lakh)?|\$\s*\d+([,.]\d+)*\s*(billion|million|trillion)?|\b\d+([,.]\d+)*\s*(crore|lakh|billion|million|trillion|percent|%|cases|deaths|tons|km|meters|metres|degrees|celsius|jobs)\b|\b\d{1,4}\b)/gi) || [];
     for (const n of numMatches) {
       if (n.length >= 1 && !dates.includes(n)) {
         numbers.push(n.trim());
@@ -177,8 +189,8 @@ export class EntityExtractorService {
     if (/chandrayaan/i.test(cleanText)) {
       events.push('Chandrayaan');
     }
-    if (/election/i.test(cleanText)) {
-      events.push('Election');
+    if (/earth|sun|orbit/i.test(cleanText)) {
+      events.push('Earth Sun Orbit');
     }
 
     return {
@@ -198,21 +210,70 @@ export class EntityExtractorService {
     const clean = this.normalizeClaim(claimText);
     const lower = clean.toLowerCase();
 
-    // 1. Location assertion: e.g. "Ram Mandir is in Pakistan", "India is in South America"
-    const locMatch = clean.match(/^(.+?)\s+(?:is located in|is in|are located in|are in|lies in|situated in|is entirely in|is located entirely in)\s+(.+?)[.]?$/i);
+    // Check for negation (e.g. "India is not located in Asia")
+    const isNegated = /\b(not|never|neither|cannot|is not|are not|was not|does not|did not)\b/i.test(clean);
+
+    // 1. Capital assertion: e.g. "The capital of India is Mumbai", "India's capital city is New Delhi"
+    const capMatch = clean.match(/(?:capital(?: city)? of\s+([a-zA-Z\s]+?)\s+is|([a-zA-Z\s]+?)(?:'s|\s+)\s*capital(?: city)?\s+is)\s+([a-zA-Z\s]+?)[.]?$/i);
+    if (capMatch) {
+      const rawEntity = (capMatch[1] || capMatch[2] || 'India').trim();
+      const capVal = capMatch[3].trim().toLowerCase().replace(/[.]+$/, '');
+      return {
+        entity: rawEntity,
+        attribute: 'capital',
+        claimValue: capVal,
+        isNegated,
+      };
+    }
+
+    // 2. Location assertion: e.g. "Ram Mandir is in Pakistan", "India is in South America", "India is not located in Asia"
+    const locMatch = clean.match(/^(.+?)\s+(?:is not located in|is not in|is located in|is in|are located in|are in|is a country in|lies in|situated in)\s+(.+?)[.]?$/i);
     if (locMatch && locMatch[1] && locMatch[2]) {
-      const rawEntity = locMatch[1].trim();
+      let rawEntity = locMatch[1].trim().replace(/\b(is|are|was|were)?\s*not\b/i, '').trim();
       const rawLoc = locMatch[2].trim().toLowerCase().replace(/[.]+$/, '');
       const entity = /ram mandir|ram temple|ram janmbhoomi/i.test(rawEntity) ? 'Ram Mandir' : rawEntity;
       return {
         entity,
         attribute: 'location',
         claimValue: rawLoc,
+        isNegated,
       };
     }
 
-    // 2. Numerical / Quantitative assertion: e.g. "The project cost ₹50,000 crore", "Population is 10 million", "create 50,000 jobs"
-    const numMatch = clean.match(/(?:cost|population|create|generated|allocated|valued at|worth|reached|is|was)\s+(₹?\s*\d+([,.]\d+)*\s*(?:crore|lakh|billion|million|trillion|percent|%|jobs)?)/i);
+    // 3. Astronomical / Physical Comparison: e.g. "The Earth is larger than the Sun"
+    const compMatch = clean.match(/(?:the\s+)?([a-zA-Z\s]+?)\s+is\s+(larger than|smaller than|bigger than|hotter than|colder than|brighter than)\s+(?:the\s+)?([a-zA-Z\s]+?)[.]?$/i);
+    if (compMatch) {
+      return {
+        entity: compMatch[1].trim(),
+        attribute: 'comparison',
+        claimValue: `${compMatch[2].trim()} ${compMatch[3].trim().toLowerCase()}`,
+        isNegated,
+      };
+    }
+
+    // 4. Astronomical / Orbital Motion: e.g. "The Earth orbits the Sun"
+    if (/\b(orbits the sun|revolves around the sun|rotates around the sun|orbits sun)\b/i.test(lower)) {
+      return {
+        entity: 'Earth',
+        attribute: 'scientific',
+        claimValue: 'orbits the sun',
+        isNegated,
+      };
+    }
+
+    // 5. Physical Constants: e.g. "Water freezes at approximately 0 degrees Celsius"
+    if (/\b(water freezes|freezing point of water|boiling point of water)\b/i.test(lower)) {
+      const val = lower.includes('0') ? '0 degrees celsius' : lower.includes('100') ? '100 degrees celsius' : 'freezing point';
+      return {
+        entity: 'Water',
+        attribute: 'scientific',
+        claimValue: val,
+        isNegated,
+      };
+    }
+
+    // 6. Numerical / Quantitative assertion: e.g. "India has a population of approximately 1.4 billion", "Mount Everest is approximately 8,849 meters high"
+    const numMatch = clean.match(/(?:cost|population of|population is|has a population of|height of|is approximately|elevation of|create|worth)\s+(?:approximately|around|about)?\s*(₹?\s*\d+([,.]\d+)*\s*(?:crore|lakh|billion|million|trillion|percent|%|meters|metres|jobs)?)/i);
     if (numMatch && numMatch[1]) {
       const numStr = numMatch[1].replace(/,/g, '').trim();
       const numVal = parseFloat(numStr.replace(/[^\d.]/g, ''));
@@ -222,20 +283,22 @@ export class EntityExtractorService {
         claimValue: numMatch[1].trim(),
         numericVal: isNaN(numVal) ? undefined : numVal,
         unit: numStr.replace(/[\d.₹$\s]/g, '').toLowerCase(),
+        isNegated,
       };
     }
 
-    // 3. Date / Temporal assertion: e.g. "Event happened on January 10", "Construction began on Monday", "completed by 2028"
+    // 7. Date / Temporal assertion: e.g. "Event happened on January 10", "Construction began on Monday", "completed by 2028"
     const dateMatch = clean.match(/(?:happened on|occurred on|held on|began on|completed by|inaugurated on)\s+([a-zA-Z0-9,\s]+?)[.]?$/i);
     if (dateMatch && dateMatch[1]) {
       return {
         entity: clean.split(' ')[0],
         attribute: 'temporal',
         claimValue: dateMatch[1].trim(),
+        isNegated,
       };
     }
 
-    // 4. Superlative assertion: e.g. "Asia is the largest continent", "Asia is smallest continent"
+    // 8. Superlative assertion: e.g. "Asia is the largest continent", "Asia is smallest continent"
     if (/\b(largest|biggest|smallest|highest|tallest|deepest|longest|fastest|coldest|hottest|most populous)\b/i.test(lower)) {
       const superlative = lower.match(/\b(largest|biggest|smallest|highest|tallest|deepest|longest|fastest|coldest|hottest|most populous)\s*(?:continent|country|ocean|mountain|river|city)?/i);
       const subject = lower.includes('asia') ? 'Asia' : clean.split(' ')[0];
@@ -243,15 +306,17 @@ export class EntityExtractorService {
         entity: subject,
         attribute: 'superlative',
         claimValue: superlative ? superlative[0].trim() : 'superlative',
+        isNegated,
       };
     }
 
-    // 5. Ruling party assertion: e.g. "BJP is ruler party of India"
+    // 9. Ruling party assertion: e.g. "BJP is ruler party of India"
     if (/ruler party|ruling party|in power|holds power/i.test(lower)) {
       return {
         entity: lower.includes('bjp') ? 'BJP' : clean.split(' ')[0],
         attribute: 'ruling_party',
         claimValue: 'ruling party',
+        isNegated,
       };
     }
 
@@ -259,28 +324,29 @@ export class EntityExtractorService {
   }
 
   /**
-   * Checks numerical conflict between claim numeric value and evidence text
+   * Checks numerical compatibility allowing reasonable tolerance (+/- 10%) for approximations
    */
   public checkNumericalCompatibility(claimValStr: string, evidenceText: string): 'SUPPORTIVE' | 'CONTRADICTORY' | 'UNRELATED' {
     const cleanClaim = claimValStr.toLowerCase().replace(/,/g, '');
     const cleanEv = evidenceText.toLowerCase().replace(/,/g, '');
 
-    // Extract numbers from claim
     const cMatches = cleanClaim.match(/\d+(\.\d+)?/g);
     if (!cMatches || cMatches.length === 0) return 'UNRELATED';
     const cNum = parseFloat(cMatches[0]);
 
-    // Check specific unit/scale matching: e.g. 50000 crore vs 5000 crore or 10 million vs 5 million
-    const evNumMatches = cleanEv.match(/(\d+(\.\d+)?)\s*(crore|lakh|billion|million|trillion|jobs|percent|%)/g);
+    // Check specific unit/scale matching: e.g. 1.4 billion vs 1.428 billion or 8,849 meters vs 8,848.86 meters
+    const evNumMatches = cleanEv.match(/(\d+(\.\d+)?)\s*(crore|lakh|billion|million|trillion|meters|metres|jobs|percent|%)/g);
     if (evNumMatches && evNumMatches.length > 0) {
       for (const evMatch of evNumMatches) {
         const evParts = evMatch.split(/\s+/);
         const evVal = parseFloat(evParts[0]);
         if (!isNaN(evVal) && !isNaN(cNum)) {
-          if (Math.abs(evVal - cNum) / Math.max(evVal, cNum) < 0.05) {
-            return 'SUPPORTIVE'; // Matches within 5%
-          } else {
-            return 'CONTRADICTORY'; // Clear numerical discrepancy
+          const diffRatio = Math.abs(evVal - cNum) / Math.max(evVal, cNum);
+          if (diffRatio < 0.10) {
+            return 'SUPPORTIVE';
+          }
+          if (diffRatio > 0.20) {
+            return 'CONTRADICTORY';
           }
         }
       }
@@ -296,7 +362,6 @@ export class EntityExtractorService {
     const cDate = claimDateStr.toLowerCase().trim();
     const cleanEv = evidenceText.toLowerCase();
 
-    // Specific Month + Day match: e.g. "january 10" vs "january 15"
     const monthDayPattern = /(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})/i;
     const cMatch = cDate.match(monthDayPattern);
 
@@ -313,7 +378,7 @@ export class EntityExtractorService {
           if (cDay === evDay) {
             return 'SUPPORTIVE';
           } else {
-            return 'CONTRADICTORY'; // Same month, conflicting day (e.g. Jan 10 vs Jan 15)
+            return 'CONTRADICTORY';
           }
         }
       }
@@ -331,44 +396,39 @@ export class EntityExtractorService {
 
     if (cLoc === eLoc) return 'SUPPORTIVE';
 
-    // 1. Direct containment: e.g. LOCATION_HIERARCHY['ayodhya'].includes('india')
     const eParents = LOCATION_HIERARCHY[eLoc] || [];
     const cParents = LOCATION_HIERARCHY[cLoc] || [];
 
     if (eParents.includes(cLoc)) {
-      return 'SUPPORTIVE'; // e.g. evidence = Ayodhya, claim = India (Ayodhya is in India -> SUPPORTIVE)
+      return 'SUPPORTIVE';
     }
 
     if (cParents.includes(eLoc)) {
-      return 'SUPPORTIVE'; // e.g. claim = Ayodhya, evidence = Uttar Pradesh / India
+      return 'SUPPORTIVE';
     }
 
-    // 2. Distinct Continents: Mutually exclusive
     const isCContinent = KNOWN_CONTINENTS.has(cLoc);
     const isEContinent = KNOWN_CONTINENTS.has(eLoc);
     if (isCContinent && isEContinent && cLoc !== eLoc) {
       return 'CONTRADICTORY';
     }
 
-    // 3. Country vs Continent conflict: e.g. Claim: India in South America, Evidence: India in Asia
     if (isCContinent && !cParents.includes(cLoc) && (eParents.includes('asia') || eLoc === 'asia' || eLoc === 'south asia')) {
       return 'CONTRADICTORY';
     }
 
-    // 4. Distinct sovereign countries: e.g. Claim: Pakistan vs Evidence: India / Ayodhya
     const isCCountry = KNOWN_COUNTRIES.has(cLoc);
     const isECountry = KNOWN_COUNTRIES.has(eLoc);
     const eCountry = eParents.find((p) => KNOWN_COUNTRIES.has(p));
 
     if (isCCountry && isECountry && cLoc !== eLoc) {
-      return 'CONTRADICTORY'; // Pakistan vs India
+      return 'CONTRADICTORY';
     }
 
     if (isCCountry && eCountry && cLoc !== eCountry) {
-      return 'CONTRADICTORY'; // Claim: Pakistan vs Evidence city/state in India (Ayodhya)
+      return 'CONTRADICTORY';
     }
 
-    // 5. Distinct cities in same country: e.g. Delhi vs Ayodhya
     if (LOCATION_HIERARCHY[cLoc] && LOCATION_HIERARCHY[eLoc] && !eParents.includes(cLoc) && !cParents.includes(eLoc)) {
       return 'CONTRADICTORY';
     }
