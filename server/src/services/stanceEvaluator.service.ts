@@ -1,3 +1,4 @@
+import { pipeline } from '@xenova/transformers';
 import { RelationToClaim, EvidenceRelation, EvidenceRelevance } from '../types/api.js';
 import { entityExtractorService, ClaimTriple } from './entityExtractor.service.js';
 import { semanticContradictionEngine } from './semanticContradictionEngine.service.js';
@@ -16,6 +17,9 @@ export interface StanceEvaluationItem {
 }
 
 export class StanceEvaluatorService {
+  private nliPipeline: any = null;
+  private isNliInitializing = false;
+
   /**
    * Evaluates the exact claim-level evidence verification.
    * Compares the EXACT CLAIM against the retrieved evidence snippet.
@@ -64,8 +68,20 @@ export class StanceEvaluatorService {
       }
     }
 
-    // Fallback deterministic claim-level verification
+    // Fallback deterministic claim-level verification (runs fast hardcoded domain rules first)
     const detResult = this.evaluateDeterministic(claimText, evidenceSnippet, evidenceTitle, isTimeSensitive);
+
+    // If hardcoded domain rules do not find a definitive stance (returned unclear), run general-purpose NLI zero-shot fallback
+    if (detResult.relation === 'unclear') {
+      const nliResult = await this.evaluateWithZeroShotNli(claimText, evidenceSnippet, evidenceTitle, isTimeSensitive);
+      if (nliResult) {
+        console.log(`Stance Result (Zero-Shot NLI): ${nliResult.relation} (Score: ${nliResult.stanceScore})`);
+        console.log(`Reasoning: ${nliResult.reasoning}`);
+        console.log(`============================================================\n`);
+        return nliResult;
+      }
+    }
+
     console.log(`Stance Result (Deterministic): ${detResult.relation} (Score: ${detResult.stanceScore})`);
     console.log(`Reasoning: ${detResult.reasoning}`);
     console.log(`============================================================\n`);
@@ -1711,6 +1727,120 @@ Return STRICT JSON only:
     }
 
     return matchCount >= 1 && (matchCount / Math.min(partsA.length, partsB.length) >= 0.5);
+  }
+
+  /**
+   * Lazy loads or returns the zero-shot NLI pipeline for general-purpose stance classification
+   */
+  private async getNliPipeline(): Promise<any> {
+    if (this.nliPipeline) return this.nliPipeline;
+    if (this.isNliInitializing) return null;
+    this.isNliInitializing = true;
+    try {
+      this.nliPipeline = await pipeline('zero-shot-classification', 'Xenova/distilbert-base-uncased-mnli', {
+        quantized: true,
+      });
+      return this.nliPipeline;
+    } catch (err) {
+      console.warn('[StanceEvaluator] Failed to load zero-shot NLI model for stance fallback:', err);
+      return null;
+    } finally {
+      this.isNliInitializing = false;
+    }
+  }
+
+  /**
+   * General-purpose zero-shot NLI stance fallback for claims outside hardcoded domain rules
+   */
+  private async evaluateWithZeroShotNli(
+    claimText: string,
+    evidenceSnippet: string,
+    evidenceTitle: string,
+    isTimeSensitive: boolean
+  ): Promise<StanceEvaluationItem | null> {
+    try {
+      const pipe = await this.getNliPipeline();
+      if (!pipe) return null;
+
+      const combinedEvidence = `${evidenceTitle} ${evidenceSnippet}`.slice(0, 600).trim();
+      if (!combinedEvidence) return null;
+
+      // Entity Grounding Check: Ensure evidence actually mentions the subject entity of the claim
+      const claimTriple = entityExtractorService.extractClaimTriple(claimText);
+      const claimEntities = entityExtractorService.extractEntities(claimText);
+      const subject = (
+        claimTriple?.holder ||
+        claimTriple?.entity ||
+        claimEntities.people[0] ||
+        claimEntities.organizations[0] ||
+        claimEntities.locations[0] ||
+        ''
+      ).toLowerCase();
+      const combinedLower = combinedEvidence.toLowerCase();
+
+      if (subject && subject.length > 2) {
+        const subjectParts = subject.split(/\s+/).filter((p: string) => p.length > 2);
+        const hasSubjectMatch = subjectParts.some((p: string) => combinedLower.includes(p));
+        if (!hasSubjectMatch) {
+          // Off-topic evidence snippet that doesn't mention the subject
+          return null;
+        }
+      }
+
+      const output = await pipe(combinedEvidence, [
+        `true: ${claimText}`,
+        `false: ${claimText}`,
+        `unrelated to: ${claimText}`
+      ], {
+        hypothesis_template: "This statement is {}."
+      });
+
+      const labels: string[] = output.labels || [];
+      const scores: number[] = output.scores || [];
+
+      const trueIdx = labels.findIndex((l) => l.startsWith('true:'));
+      const falseIdx = labels.findIndex((l) => l.startsWith('false:'));
+      const unrelatedIdx = labels.findIndex((l) => l.startsWith('unrelated:'));
+
+      const trueScore = trueIdx !== -1 ? scores[trueIdx] : 0;
+      const falseScore = falseIdx !== -1 ? scores[falseIdx] : 0;
+      const unrelatedScore = unrelatedIdx !== -1 ? scores[unrelatedIdx] : 0;
+
+      if (trueScore >= 0.45 && trueScore > falseScore + 0.15) {
+        return {
+          relation: 'supports',
+          relationToClaim: 'SUPPORTS',
+          relevance: 'direct',
+          confidence: Math.round(trueScore * 100),
+          reasoning: `Zero-shot NLI model determined evidence confirms claim (${Math.round(trueScore * 100)}% confidence).`,
+          keyEvidence: evidenceSnippet.slice(0, 140) || evidenceTitle,
+          stanceScore: 1,
+          relevanceScore: 1.0,
+          explanation: `Zero-shot NLI verification indicates evidence supports the proposition.`,
+          temporalRelevance: isTimeSensitive ? 'TEMPORALLY_RELEVANT' : 'HISTORICAL',
+        };
+      }
+
+      if (falseScore >= 0.38 && falseScore > trueScore + 0.05) {
+        return {
+          relation: 'contradicts',
+          relationToClaim: 'CONTRADICTS',
+          relevance: 'direct',
+          confidence: Math.round(falseScore * 100),
+          reasoning: `Zero-shot NLI model determined evidence contradicts claim (${Math.round(falseScore * 100)}% confidence).`,
+          keyEvidence: evidenceSnippet.slice(0, 140) || evidenceTitle,
+          stanceScore: -1,
+          relevanceScore: 1.0,
+          explanation: `Zero-shot NLI verification indicates evidence conflicts with the proposition.`,
+          temporalRelevance: isTimeSensitive ? 'TEMPORALLY_RELEVANT' : 'HISTORICAL',
+        };
+      }
+
+      return null;
+    } catch (err) {
+      console.warn('[StanceEvaluator] Zero-shot NLI stance inference failed:', err);
+      return null;
+    }
   }
 }
 

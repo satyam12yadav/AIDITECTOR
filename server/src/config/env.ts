@@ -9,6 +9,7 @@ export interface EnvConfig {
   NODE_ENV: 'development' | 'production' | 'test';
   CORS_ORIGIN: string[];
   EXA_API_KEY: string;
+  GEMINI_API_KEY: string;
 }
 
 const parseCorsOrigins = (rawOrigins?: string): string[] => {
@@ -23,4 +24,5 @@ export const env: EnvConfig = {
   NODE_ENV: (process.env.NODE_ENV as EnvConfig['NODE_ENV']) || 'development',
   CORS_ORIGIN: parseCorsOrigins(process.env.CORS_ORIGIN),
   EXA_API_KEY: process.env.EXA_API_KEY || '',
+  GEMINI_API_KEY: process.env.GEMINI_API_KEY || '',
 };

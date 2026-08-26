@@ -5,16 +5,17 @@ import { LocalModelInferenceResult } from '../types/api.js';
 transformersEnv.allowLocalModels = true;
 transformersEnv.useBrowserCache = false;
 
-const MODEL_NAME = 'Pulk17/Fake-News-Detection';
-const FALLBACK_MODEL_NAME = 'Xenova/bert-base-uncased';
+const MODEL_NAME = 'Xenova/distilbert-base-uncased-mnli';
+const CANDIDATE_LABELS = ['real news', 'fake news', 'misleading or unverified news'];
 
 export class LocalModelClassifierService {
   private classifierPipeline: any = null;
   private isInitializing = false;
   private initPromise: Promise<any> | null = null;
+  private loadError: string | null = null;
 
   /**
-   * Initializes or returns the cached local transformer pipeline
+   * Initializes or returns the cached local zero-shot NLI transformer pipeline
    */
   public async getPipeline(): Promise<any> {
     if (this.classifierPipeline) {
@@ -28,22 +29,17 @@ export class LocalModelClassifierService {
     this.isInitializing = true;
     this.initPromise = (async () => {
       try {
-        console.log(`[LocalModel] Loading transformer pipeline for "${MODEL_NAME}"...`);
-        // Attempt loading fine-tuned model or standard sequence classifier
-        try {
-          this.classifierPipeline = await pipeline('text-classification', MODEL_NAME, {
-            quantized: true,
-          });
-        } catch (loadErr) {
-          console.warn(`[LocalModel] Standard pipeline load for "${MODEL_NAME}" deferred to quantized ONNX text-classification:`, loadErr);
-          this.classifierPipeline = await pipeline('text-classification', 'Xenova/distilbert-base-uncased-finetuned-sst-2-english', {
-            quantized: true,
-          });
-        }
-        console.log(`[LocalModel] Successfully initialized local transformer model.`);
+        console.log(`[LocalModel] Loading zero-shot NLI transformer pipeline for "${MODEL_NAME}"...`);
+        this.classifierPipeline = await pipeline('zero-shot-classification', MODEL_NAME, {
+          quantized: true,
+        });
+        this.loadError = null;
+        console.log(`[LocalModel] Successfully loaded zero-shot NLI model: "${MODEL_NAME}" (Task: zero-shot-classification)`);
         return this.classifierPipeline;
-      } catch (err) {
-        console.warn('[LocalModel] Failed to load local transformer pipeline:', err);
+      } catch (err: any) {
+        this.loadError = err?.message || 'Failed to initialize transformer pipeline';
+        console.error(`[LocalModel] Failed to load local model "${MODEL_NAME}":`, err);
+        this.classifierPipeline = null;
         return null;
       } finally {
         this.isInitializing = false;
@@ -54,7 +50,7 @@ export class LocalModelClassifierService {
   }
 
   /**
-   * Classifies input text as REAL or FAKE using the local neural model
+   * Classifies input text using the zero-shot NLI transformer model
    */
   public async classifyText(text: string): Promise<LocalModelInferenceResult> {
     const startTime = Date.now();
@@ -64,9 +60,9 @@ export class LocalModelClassifierService {
       return {
         modelName: MODEL_NAME,
         prediction: 'REAL',
-        confidence: 50,
-        fakeProbability: 0.5,
-        realProbability: 0.5,
+        confidence: 0,
+        fakeProbability: 0,
+        realProbability: 0,
         isLocal: true,
         inferenceTimeMs: 0,
       };
@@ -74,52 +70,64 @@ export class LocalModelClassifierService {
 
     try {
       const pipe = await this.getPipeline();
-      if (pipe) {
-        const output = await pipe(cleanText);
-        const result = Array.isArray(output) ? output[0] : output;
-
-        // Label mapping: LABEL_0 (Fake) vs LABEL_1 (Real) or standard classification labels
-        const rawLabel = (result.label || '').toUpperCase();
-        const score = typeof result.score === 'number' ? result.score : 0.85;
-
-        const isFake = rawLabel.includes('FAKE') || rawLabel === 'LABEL_0' || rawLabel === 'NEGATIVE';
-        const prediction: 'REAL' | 'FAKE' = isFake ? 'FAKE' : 'REAL';
-        const fakeProb = isFake ? score : 1 - score;
-        const realProb = isFake ? 1 - score : score;
-
-        const inferenceTimeMs = Date.now() - startTime;
-        console.log(`[LocalModel] Inference complete in ${inferenceTimeMs}ms: ${prediction} (confidence: ${(score * 100).toFixed(1)}%)`);
-
+      if (!pipe) {
+        console.warn(`[LocalModel] Transformer pipeline unavailable ("${this.loadError || 'uninitialized'}"), reporting model unavailable.`);
         return {
           modelName: MODEL_NAME,
-          prediction,
-          confidence: Math.round(score * 100),
-          fakeProbability: Math.round(fakeProb * 100) / 100,
-          realProbability: Math.round(realProb * 100) / 100,
-          isLocal: true,
-          inferenceTimeMs,
+          prediction: 'REAL',
+          confidence: 0,
+          fakeProbability: 0,
+          realProbability: 0,
+          isLocal: false,
+          inferenceTimeMs: Date.now() - startTime,
         };
       }
+
+      const output = await pipe(cleanText, CANDIDATE_LABELS);
+      const labels: string[] = output.labels || [];
+      const scores: number[] = output.scores || [];
+
+      const fakeIdx = labels.findIndex((l) => l.toLowerCase().includes('fake'));
+      const realIdx = labels.findIndex((l) => l.toLowerCase().includes('real'));
+      const misleadingIdx = labels.findIndex((l) => l.toLowerCase().includes('misleading'));
+
+      const fakeScore = fakeIdx !== -1 ? scores[fakeIdx] : 0;
+      const realScore = realIdx !== -1 ? scores[realIdx] : 0;
+      const misleadingScore = misleadingIdx !== -1 ? scores[misleadingIdx] : 0;
+
+      const topLabel = labels[0] || 'real news';
+      const topScore = scores[0] || 0.5;
+
+      const isFake = topLabel.toLowerCase().includes('fake') || topLabel.toLowerCase().includes('misleading');
+      const prediction: 'REAL' | 'FAKE' = isFake ? 'FAKE' : 'REAL';
+
+      const combinedFakeProb = Math.min(1, fakeScore + misleadingScore * 0.7);
+      const combinedRealProb = Math.min(1, realScore + (1 - combinedFakeProb - realScore));
+
+      const inferenceTimeMs = Date.now() - startTime;
+      console.log(`[LocalModel] Zero-shot inference complete in ${inferenceTimeMs}ms: ${prediction} (top label: "${topLabel}", confidence: ${(topScore * 100).toFixed(1)}%)`);
+
+      return {
+        modelName: MODEL_NAME,
+        prediction,
+        confidence: Math.round(topScore * 100),
+        fakeProbability: Math.round(combinedFakeProb * 100) / 100,
+        realProbability: Math.round(combinedRealProb * 100) / 100,
+        isLocal: true,
+        inferenceTimeMs,
+      };
     } catch (err) {
-      console.warn('[LocalModel] Local transformer inference error, using baseline:', err);
+      console.error(`[LocalModel] Inference execution failed for "${MODEL_NAME}":`, err);
+      return {
+        modelName: MODEL_NAME,
+        prediction: 'REAL',
+        confidence: 0,
+        fakeProbability: 0,
+        realProbability: 0,
+        isLocal: false,
+        inferenceTimeMs: Date.now() - startTime,
+      };
     }
-
-    // Fallback baseline heuristic if onnx runtime unavailable
-    const lower = cleanText.toLowerCase();
-    const clickbaitMarkers = /\b(shocking|you won't believe|secret cure|miracle|hidden truth|conspiracy|hoax)\b/i.test(lower);
-    const fakeProb = clickbaitMarkers ? 0.75 : 0.35;
-    const realProb = 1 - fakeProb;
-    const prediction = fakeProb > 0.5 ? 'FAKE' : 'REAL';
-
-    return {
-      modelName: MODEL_NAME,
-      prediction,
-      confidence: Math.round((prediction === 'FAKE' ? fakeProb : realProb) * 100),
-      fakeProbability: fakeProb,
-      realProbability: realProb,
-      isLocal: true,
-      inferenceTimeMs: Date.now() - startTime,
-    };
   }
 }
 

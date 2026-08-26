@@ -131,6 +131,8 @@ async function main() {
             id: `calib-claim-${i}`,
             text: test.claim,
             confidence: 90,
+            importance: 1,
+            claim_type: 'FACTUAL',
             isCore: true,
             category: 'FACTUAL',
           },

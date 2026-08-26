@@ -51,15 +51,29 @@ export interface DatasetVectorIndex {
 // Configurable thresholds for semantic similarity matching
 export const SIMILARITY_THRESHOLDS = {
   HIGH: 0.78,
-  MEDIUM: 0.50,
+  MEDIUM: 0.58,
 };
 
 export class DatasetSimilarityService {
   private vectorIndex: DatasetVectorIndex | null = null;
-  private indexPath: string = path.resolve(__dirname, '../data/datasetVectorIndex.json');
+  private indexPath: string;
 
   constructor() {
+    this.indexPath = this.resolveIndexPath();
     this.initializeIndex();
+  }
+
+  private resolveIndexPath(): string {
+    const candidates = [
+      path.resolve(__dirname, '../data/datasetVectorIndex.json'),
+      path.resolve(process.cwd(), 'server/src/data/datasetVectorIndex.json'),
+      path.resolve(process.cwd(), 'dist-server/data/datasetVectorIndex.json'),
+      path.resolve(process.cwd(), 'data/datasetVectorIndex.json'),
+    ];
+    for (const c of candidates) {
+      if (fs.existsSync(c)) return c;
+    }
+    return candidates[0];
   }
 
   /**
@@ -67,6 +81,7 @@ export class DatasetSimilarityService {
    */
   public async initializeIndex(): Promise<void> {
     try {
+      this.indexPath = this.resolveIndexPath();
       if (fs.existsSync(this.indexPath)) {
         const raw = fs.readFileSync(this.indexPath, 'utf-8');
         this.vectorIndex = JSON.parse(raw);
@@ -81,17 +96,33 @@ export class DatasetSimilarityService {
     }
   }
 
+  private getDefaultSeedDataset(): { items: { id: string; title: string; text: string; label: 'FAKE' | 'REAL' }[]; totalRows: number; duplicatesRemoved: number } {
+    const defaultExemplars = [
+      { id: 'seed-1', title: 'Moon landing occurred in 1969 with Apollo 11', text: 'NASA Apollo 11 successfully landed astronauts on the Moon in July 1969.', label: 'REAL' as const },
+      { id: 'seed-2', title: 'The Earth is flat and surrounded by an ice wall', text: 'Conspiracy claims assert Earth is a flat plane surrounded by Antarctica ice wall.', label: 'FAKE' as const },
+      { id: 'seed-3', title: 'India won the 2024 ICC T20 World Cup', text: 'India defeated South Africa in Barbados to lift the 2024 T20 World Cup.', label: 'REAL' as const },
+      { id: 'seed-4', title: 'Vaccines contain tracking microchips', text: 'Viral rumors claimed mRNA vaccines contain 5G nano tracking microchips.', label: 'FAKE' as const }
+    ];
+    return {
+      items: defaultExemplars,
+      totalRows: defaultExemplars.length,
+      duplicatesRemoved: 0,
+    };
+  }
+
   /**
    * Discovers and parses dataset files (CSV, XLSX, JSON)
    */
   public loadRawDataset(): { items: { id: string; title: string; text: string; label: 'FAKE' | 'REAL' }[]; totalRows: number; duplicatesRemoved: number } {
     const possiblePaths = [
+      path.resolve(__dirname, '../data/fakeNewsDataset.json'),
+      path.resolve(process.cwd(), 'server/src/data/fakeNewsDataset.json'),
+      path.resolve(process.cwd(), 'dist-server/data/fakeNewsDataset.json'),
+      path.resolve(process.cwd(), 'data/fakeNewsDataset.json'),
       path.resolve(process.cwd(), 'data/fakeNewsDataset.csv'),
       path.resolve(process.cwd(), 'data/fakeNewsDataset.xlsx'),
-      path.resolve(process.cwd(), 'data/fakeNewsDataset.json'),
       path.resolve(process.cwd(), 'data/news.csv'),
       path.resolve(process.cwd(), 'data/train.csv'),
-      path.resolve(__dirname, '../data/fakeNewsDataset.json'),
     ];
 
     let foundPath = '';
@@ -103,8 +134,8 @@ export class DatasetSimilarityService {
     }
 
     if (!foundPath) {
-      console.warn('[DatasetSimilarity] No dataset file found. Using default seed dataset.');
-      foundPath = path.resolve(__dirname, '../data/fakeNewsDataset.json');
+      console.log('[DatasetSimilarity] Using default seed dataset exemplars.');
+      return this.getDefaultSeedDataset();
     }
 
     let rawRecords: any[] = [];
