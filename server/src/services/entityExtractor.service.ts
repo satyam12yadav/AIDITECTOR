@@ -12,6 +12,7 @@ export interface ClaimTriple {
     | 'ruling_party'
     | 'role_holder'
     | 'transition'
+    | 'winner'
     | 'ownership'
     | 'quantity'
     | 'comparison'
@@ -24,6 +25,8 @@ export interface ClaimTriple {
   role?: string;
   holder?: string;
   replacedEntity?: string;
+  year?: string;
+  tournament?: string;
 }
 
 export interface EvidenceTriple {
@@ -231,7 +234,27 @@ export class EntityExtractorService {
     // Check for negation (e.g. "India is not located in Asia", "has never been")
     const isNegated = /\b(not|never|neither|cannot|is not|are not|was not|does not|did not|has never been)\b/i.test(clean);
 
-    // 1. Succession / Replacement Assertion (e.g. "Shreyas Iyer replaced Suryakumar Yadav as India's T20I captain")
+    // 1. Tournament / Competition Winner assertion (e.g. "India won the 2026 FIFA World Cup", "Spain won the 2026 FIFA World Cup")
+    const winnerMatch = clean.match(/^([a-zA-Z\s]+?)\s+(?:won|clinched|lifted|triumphed in|took home)\s+(?:the\s+)?(?:(\d{4})\s+)?([a-zA-Z0-9'\s-]+?(?:world cup|championship|tournament|cup|trophy|league|olympics|copa|euro))[.]?$/i);
+    if (winnerMatch) {
+      const winnerName = winnerMatch[1].trim();
+      const year = winnerMatch[2] ? winnerMatch[2].trim() : (clean.match(/\b(20\d{2}|19\d{2})\b/)?.[0] || '');
+      const tournament = winnerMatch[3].trim();
+      const fullTournament = year ? `${year} ${tournament}` : tournament;
+
+      return {
+        entity: fullTournament,
+        attribute: 'winner',
+        holder: winnerName,
+        claimValue: winnerName,
+        year,
+        tournament: tournament.toLowerCase(),
+        temporalType: year ? (parseInt(year, 10) >= 2026 ? 'CURRENT' : 'PAST') : 'CURRENT',
+        isNegated,
+      };
+    }
+
+    // 2. Succession / Replacement Assertion (e.g. "Shreyas Iyer replaced Suryakumar Yadav as India's T20I captain")
     const replaceMatch = clean.match(/^([a-zA-Z\s]+?)\s+(?:replaced|replaces|took over from|succeeded)\s+([a-zA-Z\s]+?)\s+as\s+(?:the\s+)?([a-zA-Z0-9'\s-]+?)[.]?$/i);
     if (replaceMatch) {
       return {

@@ -171,6 +171,10 @@ export class SourceRegistryService {
       norm.endsWith('.ac.in') ||
       norm.includes('bcci.tv') ||
       norm.includes('icc-cricket.com') ||
+      norm.includes('fifa.com') ||
+      norm.includes('olympics.com') ||
+      norm.includes('uefa.com') ||
+      norm.includes('fide.com') ||
       norm.includes('rbi.org.in') ||
       norm.includes('eci.gov.in') ||
       norm.includes('isro.gov.in') ||

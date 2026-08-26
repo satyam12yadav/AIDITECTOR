@@ -31,7 +31,7 @@ const INSTITUTIONAL_TRIGGERS = [
 ];
 
 const TIME_SENSITIVE_TRIGGERS = [
-  /\b(current|present|ruler party|ruling party|in power|holds power|prime minister|president|chief minister|economic data|inflation rate|gdp|policy|regime|today|yesterday|this week|announced)\b/i,
+  /\b(current|now|latest|recently|present|winner|champion|champions|won|captain|president|prime minister|chief minister|ruler party|ruling party|in power|holds power|economic data|inflation rate|gdp|policy|regime|today|yesterday|this week|announced|\b20\d{2}\b)\b/i,
 ];
 
 export class EvidenceRetrieverService {
@@ -138,7 +138,19 @@ export class EvidenceRetrieverService {
       }
     }
 
-    // 7. Role Holder & Leadership assertion
+    // 7. Tournament / Competition Winner assertion
+    if (claimTriple && claimTriple.attribute === 'winner') {
+      const year = claimTriple.year ? `${claimTriple.year} ` : '';
+      const tourney = claimTriple.tournament || 'World Cup';
+      queries.add(`${year}${tourney} winner`);
+      queries.add(`${year}${tourney} final result champion`);
+      queries.add(`${year}${tourney} final score`);
+      if (claimTriple.holder) {
+        queries.add(`${claimTriple.holder} ${year}${tourney}`);
+      }
+    }
+
+    // 8. Role Holder & Leadership assertion
     if (claimTriple && claimTriple.attribute === 'role_holder') {
       const roleStr = claimTriple.role || 'captain';
       const holderStr = claimTriple.holder || '';

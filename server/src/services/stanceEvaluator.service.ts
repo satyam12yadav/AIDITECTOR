@@ -213,7 +213,66 @@ Return STRICT JSON only:
     const claimTriple = entityExtractorService.extractClaimTriple(claimText);
 
     // ---------------------------------------------------------------------------------
-    // 3. Relational Transitions & Replacement Contradiction Engine (Requirement 4, 5, 6)
+    // 3. Tournament / Competition Winner Stance Verification (Requirements 2, 6)
+    // ---------------------------------------------------------------------------------
+    if (claimTriple && claimTriple.attribute === 'winner') {
+      const claimedWinner = (claimTriple.holder || claimTriple.claimValue).toLowerCase();
+      const claimYear = claimTriple.year;
+      const claimTourney = (claimTriple.tournament || claimTriple.entity).toLowerCase();
+
+      const evWinnerInfo = this.extractTournamentWinnerFromEvidence(combined);
+      if (evWinnerInfo) {
+        const evWinner = evWinnerInfo.winner.toLowerCase();
+        const evYear = evWinnerInfo.year;
+        const evTourney = evWinnerInfo.tournament.toLowerCase();
+
+        // Check tournament alignment (e.g. both are about "FIFA World Cup" or "T20 World Cup")
+        const tourneyMatches =
+          (claimTourney.includes('fifa') && evTourney.includes('fifa')) ||
+          (claimTourney.includes('t20') && (evTourney.includes('t20') || combined.includes('t20'))) ||
+          (claimTourney.includes('icc') && (evTourney.includes('icc') || combined.includes('icc'))) ||
+          (claimTourney.includes('world cup') && evTourney.includes('world cup')) ||
+          this.namesMatch(claimTourney, evTourney);
+
+        // Check year alignment (if claim specifies year, evidence must match or be relevant edition)
+        const yearMatches = !claimYear || !evYear || claimYear === evYear;
+
+        if (tourneyMatches && yearMatches) {
+          const isWinnerMatch = this.namesMatch(claimedWinner, evWinner);
+
+          if (isWinnerMatch) {
+            return {
+              relation: 'supports',
+              relationToClaim: 'SUPPORTS',
+              relevance: 'direct',
+              confidence: 98,
+              reasoning: `Tournament result verified: Official records confirm ${claimTriple.holder} won the ${claimTriple.entity}.`,
+              keyEvidence: evidenceSnippet.slice(0, 140),
+              stanceScore: 1,
+              relevanceScore: 1.0,
+              explanation: `Tournament result verified: ${claimTriple.holder} won the ${claimTriple.entity}.`,
+              temporalRelevance: 'TEMPORALLY_RELEVANT',
+            };
+          } else {
+            return {
+              relation: 'contradicts',
+              relationToClaim: 'CONTRADICTS',
+              relevance: 'direct',
+              confidence: 98,
+              reasoning: `Tournament result contradiction: Verified records confirm ${evWinnerInfo.winner.toUpperCase()} won the ${claimTriple.entity}, directly refuting the claim that ${claimTriple.holder} won.`,
+              keyEvidence: evidenceSnippet.slice(0, 140),
+              stanceScore: -1,
+              relevanceScore: 1.0,
+              explanation: `Tournament result contradiction: ${evWinnerInfo.winner} won the ${claimTriple.entity}, not ${claimTriple.holder}.`,
+              temporalRelevance: 'TEMPORALLY_RELEVANT',
+            };
+          }
+        }
+      }
+    }
+
+    // ---------------------------------------------------------------------------------
+    // 4. Relational Transitions & Replacement Contradiction Engine (Requirement 4, 5, 6)
     // ---------------------------------------------------------------------------------
     // Detect replacement transitions in evidence: e.g. "Shreyas Iyer has been unveiled as India's new T20I captain, replacing Suryakumar Yadav"
     const transitionMatches = this.extractTransitionFromEvidence(combined);
@@ -740,6 +799,46 @@ Return STRICT JSON only:
       explanation: 'Evidence mentions related subjects, but does not provide direct factual verification or contradiction of the exact assertion.',
       temporalRelevance: 'UNKNOWN',
     };
+  }
+
+  /**
+   * Helper to extract tournament / competition winner tuples from evidence text
+   */
+  private extractTournamentWinnerFromEvidence(text: string): { winner: string; tournament: string; year?: string } | null {
+    const clean = text.replace(/['’]/g, "'").replace(/\s+/g, ' ');
+
+    // 1. "[Winner] won the [Year] [Tournament]" or "[Winner] defeated [Opponent] to win the [Year] [Tournament]"
+    // e.g. "Spain won the 2026 FIFA World Cup", "Spain won the 2026 FIFA World Cup by defeating Argentina 1-0 in the final", "India won the 2026 ICC Men's T20 World Cup"
+    const p1 = clean.match(/([a-zA-Z\s]+?)\s+(?:won|clinched|lifted|triumphed in|crowned champion(?:s)? of|defeated\s+[a-zA-Z\s]+\s+(?:\d+-\d+\s+)?(?:in\s+the\s+final\s+)?to win)\s+(?:the\s+)?(?:(\d{4})\s+)?([a-zA-Z0-9'\s-]+?(?:world cup|championship|tournament|cup|trophy|league|olympics|copa|euro))/i);
+    if (p1) {
+      const rawWinner = p1[1].trim();
+      const words = rawWinner.split(/\s+/);
+      const winner = (words.length > 3 ? words.slice(-2).join(' ') : rawWinner).toLowerCase();
+      const year = p1[2] ? p1[2].trim() : (clean.match(/\b(20\d{2}|19\d{2})\b/)?.[0] || '');
+      const tournament = p1[3].trim().toLowerCase();
+      return {
+        winner,
+        tournament,
+        year,
+      };
+    }
+
+    // 2. "[Winner] (is|are|became) (the) [Year] [Tournament] (champion|winner)"
+    const p2 = clean.match(/([a-zA-Z\s]+?)\s+(?:is|are|became|crowned as)\s+(?:the\s+)?(?:(\d{4})\s+)?([a-zA-Z0-9'\s-]+?(?:world cup|championship|tournament|cup|trophy))\s+(?:champion|winner|champions)/i);
+    if (p2) {
+      const rawWinner = p2[1].trim();
+      const words = rawWinner.split(/\s+/);
+      const winner = (words.length > 3 ? words.slice(-2).join(' ') : rawWinner).toLowerCase();
+      const year = p2[2] ? p2[2].trim() : (clean.match(/\b(20\d{2}|19\d{2})\b/)?.[0] || '');
+      const tournament = p2[3].trim().toLowerCase();
+      return {
+        winner,
+        tournament,
+        year,
+      };
+    }
+
+    return null;
   }
 
   /**
