@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AIDetector — Project Presentation & Architecture Dossier</title>
+  <style>
+    :root {
+      --bg: #fafafa;
+      --card-bg: #ffffff;
+      --text: #09090b;
+      --text-muted: #52525b;
+      --border: #e4e4e7;
+      --primary: #18181b;
+      --accent: #2563eb;
+      --emerald: #059669;
+      --emerald-bg: #ecfdf5;
+      --rose: #e11d48;
+      --rose-bg: #fff1f2;
+      --amber: #d97706;
+      --amber-bg: #fffbeb;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 40px 20px;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 48px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+    }
+
+    .header-badge {
+      display: inline-block;
+      background: var(--emerald-bg);
+      color: var(--emerald);
+      border: 1px solid #a7f3d0;
+      padding: 4px 12px;
+      border-radius: 9999px;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 16px;
+    }
+
+    h1 {
+      font-size: 36px;
+      font-weight: 800;
+      color: var(--primary);
+      margin-bottom: 8px;
+      letter-spacing: -0.5px;
+    }
+
+    .subtitle {
+      font-size: 16px;
+      color: var(--text-muted);
+      margin-bottom: 32px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 24px;
+    }
+
+    h2 {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--primary);
+      margin-top: 36px;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    h3 {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--primary);
+      margin-top: 20px;
+      margin-bottom: 8px;
+    }
+
+    p, li {
+      color: #3f3f46;
+      font-size: 14px;
+      margin-bottom: 12px;
+    }
+
+    ul, ol {
+      margin-left: 24px;
+      margin-bottom: 16px;
+    }
+
+    .highlight-box {
+      background: #f8fafc;
+      border-left: 4px solid var(--primary);
+      padding: 16px 20px;
+      border-radius: 0 8px 8px 0;
+      margin: 20px 0;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px;
+      margin: 20px 0;
+    }
+
+    .card {
+      background: #ffffff;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+    }
+
+    .card-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--primary);
+      margin-bottom: 6px;
+    }
+
+    .card-desc {
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 20px 0;
+      font-size: 13px;
+    }
+
+    th, td {
+      border: 1px solid var(--border);
+      padding: 12px 14px;
+      text-align: left;
+    }
+
+    th {
+      background: #f4f4f5;
+      font-weight: 700;
+      color: var(--primary);
+    }
+
+    pre {
+      background: #18181b;
+      color: #fafafa;
+      padding: 16px;
+      border-radius: 8px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      overflow-x: auto;
+      margin: 16px 0;
+    }
+
+    .badge-true { background: var(--emerald-bg); color: var(--emerald); font-weight: 700; padding: 2px 8px; border-radius: 4px; }
+    .badge-false { background: var(--rose-bg); color: var(--rose); font-weight: 700; padding: 2px 8px; border-radius: 4px; }
+    .badge-neutral { background: var(--amber-bg); color: var(--amber); font-weight: 700; padding: 2px 8px; border-radius: 4px; }
+
+    .print-btn {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: #18181b;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 9999px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      transition: all 0.2s;
+    }
+
+    .print-btn:hover {
+      background: #27272a;
+      transform: translateY(-2px);
+    }
+
+    @media print {
+      body { background: white; padding: 0; }
+      .container { border: none; box-shadow: none; padding: 0; }
+      .print-btn { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <button class="print-btn" onclick="window.print()">🖨️ Print / Save as PDF</button>
+
+  <div class="container">
+    <div class="header-badge">Executive Technical Dossier</div>
+    <h1>AIDetector (Fake News Killer)</h1>
+    <div class="subtitle">
+      Automated Evidence-Grounded Fact Checking & Local Neural Credibility Architecture · <strong>v1.0 Production Architecture</strong>
+    </div>
+
+    <h2>1. Executive Summary & Problem Solved</h2>
+    <p>
+      Traditional fake news detectors either rely on <strong>black-box generative AI models</strong> (which hallucinate, cost money per API call, and offer no proof) or <strong>crude keyword matching</strong>.
+    </p>
+    <div class="highlight-box">
+      <strong>AIDetector's Core Innovation:</strong>
+      Combines a <strong>fine-tuned local BERT transformer model (5ms latency, 0 cloud cost)</strong> with a <strong>live multi-source Retrieval-Augmented Generation (RAG) pipeline</strong> and a <strong>Natural Language Inference (NLI) proposition engine</strong>. Every score is mathematically grounded in verifiable source citations.
+    </div>
+
+    <h2>2. Complete End-to-End Workflow</h2>
+    <pre>
+USER INPUT (Text Claim or URL)
+         ↓
+1. INGESTION & ATOMIC CLAIM DECOMPOSITION
+         ↓
+┌──────────────────────────────────────────────┐
+│ PARALLEL EXECUTION:                          │
+│                                              │
+│ [A] LOCAL BERT TRANSFORMER (Pulk17)          │
+│     • In-Process ONNX Inference (~5ms)       │
+│     • Output: REAL / FAKE Softmax Scores     │
+│                                              │
+│ [B] MULTI-SOURCE RETRIEVAL & RAG (Exa.ai)    │
+│     • Extracts Structured Propositions       │
+│     • Queries 50+ Accredited Fact-Checkers   │
+│     • Semantic Relevance Gate (DIRECT/REL)   │
+└──────────────────────────────────────────────┘
+         ↓
+2. SEMANTIC STANCE & CONTRADICTION ENGINE (NLI)
+   • Compares Premise vs. Hypothesis
+   • Resolves Leadership/Role Transitions, Capitals, Shapes, Constants
+         ↓
+3. CALIBRATED EVIDENCE-GROUNDED SCORING
+   • Deduplicates syndicated wire sources into independent clusters
+   • Computes 0–100 Credibility Score & Confidence Rating
+         ↓
+4. CLIENT PRESENTATION & CITATION DOSSIER
+   • Clear Trust Score (e.g. 85/100)
+   • Local AI Inference Badge
+   • Itemized Claims Breakdown & Verifiable Source Links
+    </pre>
+
+    <h2>3. Artificial Intelligence & NLP Models Used</h2>
+    <div class="grid">
+      <div class="card">
+        <div class="card-title">⚡ Local BERT Classifier</div>
+        <div class="card-desc">
+          <strong>Model:</strong> <code>Pulk17/Fake-News-Detection</code><br>
+          <strong>Engine:</strong> <code>@xenova/transformers</code> (ONNX)<br>
+          <strong>Latency:</strong> ~5ms on standard CPU.<br>
+          <strong>Benefit:</strong> 100% offline, zero API dependency.
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">🎯 Semantic NLI Proposition Engine</div>
+        <div class="card-desc">
+          <strong>Function:</strong> Evaluates proposition entailment and mutual exclusivity without requiring literal words like "false" or "not".
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">🌐 Multi-Source RAG Retrieval</div>
+        <div class="card-desc">
+          <strong>Providers:</strong> Exa.ai, Google FactCheck, 50+ Indian & Global wire services and fact-checking registries.
+        </div>
+      </div>
+    </div>
+
+    <h2>4. Credibility Scoring & Conflict Matrix</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Verification Condition</th>
+          <th>Stance</th>
+          <th>Score Range</th>
+          <th>System Decision Rule</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Direct Unanimous Contradiction</td>
+          <td><span class="badge-false">CONTRADICTS</span></td>
+          <td><strong>5 – 15 / 100</strong></td>
+          <td>Authoritative sources refute the claim proposition.</td>
+        </tr>
+        <tr>
+          <td>Direct Unanimous Support</td>
+          <td><span class="badge-true">SUPPORTS</span></td>
+          <td><strong>85 – 98 / 100</strong></td>
+          <td>Independent Tier 1/2/3 sources corroborate the assertion.</td>
+        </tr>
+        <tr>
+          <td>Major False Claim + Minor True Facts</td>
+          <td><span class="badge-false">CONTRADICTS</span></td>
+          <td><strong>20 – 30 / 100</strong></td>
+          <td>Contradiction on core proposition dominates the score.</td>
+        </tr>
+        <tr>
+          <td>No Reliable Evidence Found</td>
+          <td><span class="badge-neutral">UNCLEAR</span></td>
+          <td><strong>50 – 52 / 100</strong></td>
+          <td>Neutral unverified baseline (absence of evidence is not falsehood).</td>
+        </tr>
+        <tr>
+          <td>Contested Convention (e.g. 6 vs 7 Continents)</td>
+          <td><span class="badge-neutral">QUALIFIED</span></td>
+          <td><strong>~55 / 100</strong></td>
+          <td>Flags multi-model regional definitions with neutral nuance.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>5. Key Code Files & Directory Architecture</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>File Path</th>
+          <th>Responsibility</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>server/src/services/localModelClassifier.service.ts</code></td>
+          <td>Executes in-process BERT transformer inference on device.</td>
+        </tr>
+        <tr>
+          <td><code>server/src/services/semanticContradictionEngine.service.ts</code></td>
+          <td>Proposition extraction, NLI semantic stance, and relevance gating.</td>
+        </tr>
+        <tr>
+          <td><code>server/src/services/exaSearch.service.ts</code></td>
+          <td>Exa.ai API search, query generator, and search quality loop.</td>
+        </tr>
+        <tr>
+          <td><code>server/src/services/credibilityScorer.service.ts</code></td>
+          <td>Aggregates independent evidence and calculates calibrated scores.</td>
+        </tr>
+        <tr>
+          <td><code>src/components/landing/LandingPage.tsx</code></td>
+          <td>Modern minimalist hero with interactive quick-test claim pills.</td>
+        </tr>
+        <tr>
+          <td><code>src/components/results/ForensicReportView.tsx</code></td>
+          <td>Complete results report with score gauge, claims list, and citations.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>6. How to Demo & Explain in a Presentation</h2>
+    <ul>
+      <li><strong>Demo 1 (Real Fact):</strong> Type <em>"Water boils at 100 degrees Celsius."</em> $\to$ Shows <strong>Score 90+ (Probably Credible)</strong> with scientific corroboration.</li>
+      <li><strong>Demo 2 (False Claim):</strong> Type <em>"The capital of Germany is Paris."</em> $\to$ Shows <strong>Score 10 (Probably False)</strong>, demonstrating proposition contradiction (Berlin is capital).</li>
+      <li><strong>Demo 3 (Leadership Transition):</strong> Type <em>"Suryakumar Yadav is currently India's T20I captain."</em> $\to$ Detects replacement by Shreyas Iyer $\to$ <strong>Score 16 (Probably False)</strong>.</li>
+      <li><strong>Demo 4 (Local AI Speed):</strong> Point to the <strong>Local BERT Model</strong> badge showing <strong>~5ms execution time</strong> without cloud API latency.</li>
+    </ul>
+
+  </div>
+
+</body>
+</html>
