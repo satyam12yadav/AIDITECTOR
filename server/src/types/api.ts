@@ -57,15 +57,21 @@ export interface ExtractedClaim {
   entities?: ExtractedEntities;
   evaluation?: ClaimForensicEvaluation;
 
-  // Step 7: Calibrated Claim-Level Fields
+  // Step 7 & 9: Calibrated Claim-Level Fields
   relation?: 'supports' | 'contradicts' | 'unclear';
   claimScore?: number; // 0 - 100
   confidence?: number; // 0 - 100
   evidenceCount?: number;
+  rawSourceCount?: number;
+  independentSourceCount?: number;
   supportingEvidenceCount?: number;
+  independentSupportingSources?: number;
   contradictingEvidenceCount?: number;
+  independentContradictingSources?: number;
+  unclearSources?: number;
   strongestSource?: string;
   evidenceQuality?: 'HIGH' | 'MEDIUM' | 'LOW';
+  consensusStatus?: 'UNANIMOUS_SUPPORT' | 'UNANIMOUS_CONTRADICTION' | 'CONFLICTING_EVIDENCE' | 'INSUFFICIENT_EVIDENCE';
   reasoning?: string;
 }
 
@@ -74,6 +80,8 @@ export type SourceType = 'official' | 'news' | 'fact_check' | 'reference' | 'enc
 export type RelationToClaim = 'SUPPORTS' | 'CONTRADICTS' | 'NEUTRAL' | 'INSUFFICIENT';
 export type EvidenceRelation = 'supports' | 'contradicts' | 'unclear';
 export type EvidenceRelevance = 'direct' | 'related' | 'irrelevant';
+export type FreshnessCategory = 'CURRENT' | 'RECENT' | 'OLD' | 'UNKNOWN';
+export type RelevanceClassification = 'DIRECTLY_RELEVANT' | 'PARTIALLY_RELEVANT' | 'IRRELEVANT';
 
 export interface RetrievedEvidenceItem {
   id: string;
@@ -92,6 +100,11 @@ export interface RetrievedEvidenceItem {
   keyEvidence: string;
   explanation: string;
   finalContribution: number; // 0 - 100
+
+  // Step 9 Enhancements
+  domain?: string;
+  freshness?: FreshnessCategory;
+  relevanceClassification?: RelevanceClassification;
 
   // Backward-compatible fields
   url: string;

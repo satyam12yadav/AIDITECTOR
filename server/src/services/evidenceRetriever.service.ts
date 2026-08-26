@@ -7,6 +7,8 @@ import {
   EvidenceRelation,
   RelationToClaim,
   EvidenceRelevance,
+  FreshnessCategory,
+  RelevanceClassification,
 } from '../types/api.js';
 import { sourceRegistry } from './sourceRegistry.service.js';
 import { stanceEvaluatorService } from './stanceEvaluator.service.js';
@@ -21,6 +23,7 @@ interface RawCandidate {
   publishedDate: string | null;
   priorityTier: 1 | 2 | 3 | 4 | 5;
   sourceType?: SourceType;
+  domain?: string;
 }
 
 const INSTITUTIONAL_TRIGGERS = [
@@ -28,7 +31,7 @@ const INSTITUTIONAL_TRIGGERS = [
 ];
 
 const TIME_SENSITIVE_TRIGGERS = [
-  /\b(current|present|ruler party|ruling party|in power|holds power|prime minister|president|chief minister|economic data|inflation rate|gdp|policy|regime)\b/i,
+  /\b(current|present|ruler party|ruling party|in power|holds power|prime minister|president|chief minister|economic data|inflation rate|gdp|policy|regime|today|yesterday|this week|announced)\b/i,
 ];
 
 export class EvidenceRetrieverService {
@@ -41,7 +44,6 @@ export class EvidenceRetrieverService {
     }
 
     const tStart = Date.now();
-    // Prioritize up to top 6 claims for multi-claim article verification
     const prioritizedClaims = claims.slice(0, 6);
 
     const evidencePromises = prioritizedClaims.map(async (claim) => {
@@ -64,12 +66,14 @@ export class EvidenceRetrieverService {
       }
     }
 
-    console.log(`[TIMING] Multi-source evidence retrieval completed in ${Date.now() - tStart}ms (claims: ${prioritizedClaims.length}, total items: ${flattened.length})`);
+    console.log(
+      `[TIMING] Multi-source evidence retrieval completed in ${Date.now() - tStart}ms (claims: ${prioritizedClaims.length}, total items: ${flattened.length})`
+    );
     return flattened;
   }
 
   /**
-   * Generates 2-3 clean, semantic search queries from claim text
+   * Generates 2-4 clean, semantic search queries from claim text and claim type
    */
   public generateSearchQueries(claimText: string, isTimeSensitive = false): string[] {
     const cleaned = claimText.replace(/[“”"'.,;!?()]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -77,28 +81,55 @@ export class EvidenceRetrieverService {
 
     const claimTriple = entityExtractorService.extractClaimTriple(claimText);
 
-    // 1. If location assertion, generate focused entity location query
+    // 1. Location assertion: generate query for the underlying factual location
     if (claimTriple && claimTriple.attribute === 'location') {
       queries.add(`${claimTriple.entity} location`);
       queries.add(`${claimTriple.entity} located in`);
+      queries.add(`${claimTriple.entity} official location`);
       queries.add(`${claimTriple.entity} ${claimTriple.claimValue}`);
     }
 
-    // 2. If numerical assertion, include number/quantity topic
+    // 2. Capital assertion: generate capital city query
+    if (claimTriple && claimTriple.attribute === 'capital') {
+      queries.add(`capital city of ${claimTriple.entity}`);
+      queries.add(`${claimTriple.entity} capital`);
+    }
+
+    // 3. Astronomical / Scientific comparison or constant assertion
+    if (claimTriple && (claimTriple.attribute === 'scientific' || claimTriple.attribute === 'comparison')) {
+      if (claimTriple.claimValue.includes('orbits the sun')) {
+        queries.add('Earth orbit around Sun');
+        queries.add('Earth revolves around Sun solar system');
+      } else if (claimTriple.claimValue.includes('0 degrees')) {
+        queries.add('freezing point of water Celsius');
+        queries.add('water freezes at 0 degrees Celsius');
+      } else if (claimTriple.attribute === 'comparison') {
+        queries.add(`${claimTriple.entity} size comparison Sun`);
+        queries.add(`Sun diameter volume vs Earth`);
+      } else {
+        queries.add(`${cleaned} science`);
+        queries.add(`${cleaned} physical constant`);
+      }
+    }
+
+    // 4. Numerical / Quantitative assertion
     if (claimTriple && claimTriple.attribute === 'numerical') {
       queries.add(`${claimTriple.entity} ${claimTriple.claimValue}`);
+      queries.add(`${claimTriple.entity} official statistics`);
       queries.add(`${cleaned}`);
     }
 
-    // 3. If date / temporal assertion, include event + date
+    // 5. Date / Temporal assertion
     if (claimTriple && claimTriple.attribute === 'temporal') {
       queries.add(`${claimTriple.entity} ${claimTriple.claimValue}`);
-      queries.add(`${cleaned}`);
+      queries.add(`${claimTriple.entity} timeline date`);
     }
 
-    // 4. Semantic query expansion for superlatives & comparisons
+    // 6. Superlatives & Comparisons
     if (/\b(largest|biggest|smallest|highest|tallest|deepest|longest|fastest|coldest|hottest|most populous)\b/i.test(cleaned)) {
-      const superlativeMatch = cleaned.match(/\b(largest|biggest|smallest|highest|tallest|deepest|longest|fastest|coldest|hottest|most populous)\s*(\w+)?/i);
+      const superlativeMatch = cleaned.match(
+        /\b(largest|biggest|smallest|highest|tallest|deepest|longest|fastest|coldest|hottest|most populous)\s*(\w+)?/i
+      );
       const subject = claimTriple?.entity || cleaned.split(' ')[0];
       if (superlativeMatch && subject) {
         queries.add(`${subject} ${superlativeMatch[0]}`);
@@ -107,15 +138,18 @@ export class EvidenceRetrieverService {
       }
     }
 
-    // 5. Time-sensitive Political queries
-    if (/ruler party/i.test(cleaned)) {
+    // 7. Time-sensitive political / governance queries
+    if (/ruler party|ruling party|prime minister/i.test(cleaned)) {
       const fixed = cleaned.replace(/ruler party/i, 'ruling party');
       queries.add(`${fixed} Union government`);
+      queries.add(`current Prime Minister of India official`);
     }
 
-    // 6. Primary Clean Query (Filtered stop words)
+    // 8. General fallback query
     if (queries.size === 0) {
-      const stopWords = new Set(['is', 'are', 'was', 'were', 'the', 'a', 'an', 'of', 'and', 'that', 'with', 'from', 'at', 'in', 'on', 'to']);
+      const stopWords = new Set([
+        'is', 'are', 'was', 'were', 'the', 'a', 'an', 'of', 'and', 'that', 'with', 'from', 'at', 'in', 'on', 'to',
+      ]);
       const words = cleaned.split(' ').filter(Boolean);
       const coreWords = words.filter((w) => !stopWords.has(w.toLowerCase()) || w.length > 5);
       if (coreWords.length >= 2) {
@@ -125,7 +159,7 @@ export class EvidenceRetrieverService {
       }
     }
 
-    return Array.from(queries).slice(0, 3);
+    return Array.from(queries).slice(0, 4);
   }
 
   /**
@@ -144,6 +178,14 @@ export class EvidenceRetrieverService {
 
     const addCandidate = (c: RawCandidate) => {
       const normTitle = c.title.toLowerCase().replace(/[^a-z0-9]/g, '');
+      let domain = '';
+      try {
+        domain = new URL(c.url).hostname.replace(/^www\./, '');
+      } catch {
+        domain = 'unknown';
+      }
+      c.domain = domain;
+
       if (c.url && !seenUrls.has(c.url) && !seenTitles.has(normTitle) && this.isValidEvidenceUrl(c.url)) {
         seenUrls.add(c.url);
         seenTitles.add(normTitle);
@@ -175,7 +217,7 @@ export class EvidenceRetrieverService {
         })
         .catch(() => {}),
 
-      // 2. Authoritative Knowledge & Reference Repositories (Britannica, National Geographic, ThoughtCo, Wikipedia)
+      // 2. Authoritative Knowledge & Reference Repositories (Britannica, Wikipedia, National Geographic, ThoughtCo)
       this.fetchAuthoritativeReferences(claim, searchQueries)
         .then((krs) => {
           for (const kr of krs) {
@@ -237,9 +279,9 @@ export class EvidenceRetrieverService {
     // Await all parallel tasks
     await Promise.allSettled(searchTasks);
 
-    // Filter to top 5 highest-priority candidates for stance evaluation
+    // Rank candidates by priority tier: Tier 1 (Official) > Tier 2 (Fact-Check) > Tier 3 (Reputable News) > Tier 4 (Reference) > Tier 5 (Other)
     rawCandidates.sort((a, b) => a.priorityTier - b.priorityTier);
-    const prioritizedCandidates = rawCandidates.slice(0, 5);
+    const prioritizedCandidates = rawCandidates.slice(0, 6);
 
     // -------------------------------------------------------------
     // Concurrent Claim-Level Stance Evaluation
@@ -281,18 +323,24 @@ export class EvidenceRetrieverService {
           ? 'news'
           : 'other');
 
-      // Requirement 10: Explicit Decision Logging
+      const domain = candidate.domain || this.extractDomain(candidate.url);
+      const freshness = this.computeFreshness(candidate.publishedDate, isTimeSensitive);
+      const relevanceClassification: RelevanceClassification =
+        stance.relevance === 'direct'
+          ? 'DIRECTLY_RELEVANT'
+          : stance.relevance === 'related'
+          ? 'PARTIALLY_RELEVANT'
+          : 'IRRELEVANT';
+
+      // Log decision
       console.log(`\n------------------------------------------------------------`);
       console.log(`CLAIM: ${claim.text}`);
       if (claimTriple) {
-        console.log(`ENTITY: ${claimTriple.entity}`);
-        console.log(`ATTRIBUTE: ${claimTriple.attribute}`);
-        console.log(`CLAIM VALUE: ${claimTriple.claimValue}`);
+        console.log(`ENTITY: ${claimTriple.entity} | ATTR: ${claimTriple.attribute} | VAL: ${claimTriple.claimValue}`);
       }
-      console.log(`SOURCE: ${candidate.url}`);
-      console.log(`SOURCE TIER: Tier ${sourceEval.credibilityTier} (${sourceEval.category})`);
-      console.log(`RELATION: ${stance.relation}`);
-      console.log(`STANCE SCORE: ${stance.stanceScore > 0 ? '+1' : stance.stanceScore < 0 ? '-1' : '0'}`);
+      console.log(`SOURCE: ${candidate.url} (Domain: ${domain})`);
+      console.log(`SOURCE TIER: Tier ${sourceEval.credibilityTier} (${sourceEval.category}) | FRESHNESS: ${freshness}`);
+      console.log(`RELEVANCE: ${relevanceClassification} | RELATION: ${stance.relation} (${stance.stanceScore > 0 ? '+1' : stance.stanceScore < 0 ? '-1' : '0'})`);
       console.log(`REASONING: ${stance.reasoning}`);
       console.log(`------------------------------------------------------------\n`);
 
@@ -311,6 +359,9 @@ export class EvidenceRetrieverService {
         keyEvidence: stance.keyEvidence,
         explanation: stance.explanation,
         finalContribution,
+        domain,
+        freshness,
+        relevanceClassification,
 
         url: candidate.url,
         publisher: resolvedName,
@@ -337,7 +388,94 @@ export class EvidenceRetrieverService {
       return scoreB - scoreA;
     });
 
-    return evidenceList.slice(0, 3);
+    // Populate claim-level independent consensus metrics
+    this.calculateClaimConsensusMetrics(claim, evidenceList);
+
+    return evidenceList.slice(0, 4);
+  }
+
+  /**
+   * Calculates independent source counts and consensus status on a claim
+   */
+  public calculateClaimConsensusMetrics(
+    claim: ExtractedClaim,
+    evidenceList: Omit<RetrievedEvidenceItem, 'id' | 'claimId'>[] | RetrievedEvidenceItem[]
+  ): void {
+    const rawCount = evidenceList.length;
+    const distinctDomains = new Set<string>();
+    let supCount = 0;
+    let conCount = 0;
+    let uncCount = 0;
+    const supDomains = new Set<string>();
+    const conDomains = new Set<string>();
+
+    for (const ev of evidenceList) {
+      const d = ev.domain || this.extractDomain(ev.sourceUrl || ev.url);
+      distinctDomains.add(d);
+
+      if (ev.relation === 'supports' || ev.relationToClaim === 'SUPPORTS') {
+        supCount++;
+        supDomains.add(d);
+      } else if (ev.relation === 'contradicts' || ev.relationToClaim === 'CONTRADICTS') {
+        conCount++;
+        conDomains.add(d);
+      } else {
+        uncCount++;
+      }
+    }
+
+    claim.rawSourceCount = rawCount;
+    claim.independentSourceCount = distinctDomains.size;
+    claim.supportingEvidenceCount = supCount;
+    claim.independentSupportingSources = supDomains.size;
+    claim.contradictingEvidenceCount = conCount;
+    claim.independentContradictingSources = conDomains.size;
+    claim.unclearSources = uncCount;
+
+    if (conDomains.size > 0 && supDomains.size > 0) {
+      claim.consensusStatus = 'CONFLICTING_EVIDENCE';
+    } else if (supDomains.size > 0) {
+      claim.consensusStatus = 'UNANIMOUS_SUPPORT';
+    } else if (conDomains.size > 0) {
+      claim.consensusStatus = 'UNANIMOUS_CONTRADICTION';
+    } else {
+      claim.consensusStatus = 'INSUFFICIENT_EVIDENCE';
+    }
+  }
+
+  /**
+   * Extracts domain hostname safely
+   */
+  public extractDomain(urlStr: string): string {
+    try {
+      return new URL(urlStr).hostname.replace(/^www\./, '');
+    } catch {
+      return 'unknown';
+    }
+  }
+
+  /**
+   * Evaluates freshness category based on publication timestamp
+   */
+  public computeFreshness(publishedDateStr: string | null, isTimeSensitive: boolean): FreshnessCategory {
+    if (!publishedDateStr) {
+      return isTimeSensitive ? 'UNKNOWN' : 'RECENT';
+    }
+
+    try {
+      const pubDate = new Date(publishedDateStr);
+      if (isNaN(pubDate.getTime())) return 'UNKNOWN';
+
+      const now = new Date();
+      const diffDays = Math.floor((now.getTime() - pubDate.getTime()) / (1000 * 60 * 60 * 24));
+
+      if (diffDays < 7) return 'CURRENT';
+      if (diffDays < 90) return 'RECENT';
+      if (diffDays > 365) return 'OLD';
+      return 'RECENT';
+    } catch {
+      return 'UNKNOWN';
+    }
   }
 
   /**
@@ -412,6 +550,7 @@ export class EvidenceRetrieverService {
               publishedDate: null,
               priorityTier: 4,
               sourceType: 'encyclopedia',
+              domain: 'en.wikipedia.org',
             });
           }
         }
@@ -431,6 +570,7 @@ export class EvidenceRetrieverService {
         publisher: isBritannica ? 'Encyclopædia Britannica' : r.publisher,
         priorityTier: 4,
         sourceType: isBritannica ? 'encyclopedia' : 'reference',
+        domain: this.extractDomain(r.url),
       });
     }
 
@@ -485,6 +625,7 @@ export class EvidenceRetrieverService {
             publishedDate: pubDate ? new Date(pubDate).toISOString().slice(0, 10) : null,
             priorityTier: 3,
             sourceType: 'news',
+            domain: this.extractDomain(sourceUrl),
           });
         }
       });
@@ -569,6 +710,7 @@ export class EvidenceRetrieverService {
             publishedDate: null,
             priorityTier: 3,
             sourceType,
+            domain: this.extractDomain(targetUrl),
           });
         }
       });

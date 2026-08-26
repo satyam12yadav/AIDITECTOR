@@ -193,12 +193,26 @@ export class CredibilityScorerService {
       claim.contradictingEvidenceCount = contradictingItems.length;
       claim.supportingEvidenceCount = supportingItems.length;
 
-      // Deduplicate independent publishers
+      // Deduplicate independent domains & sources
       const independentSources = new Set<string>();
+      const supDomains = new Set<string>();
+      const conDomains = new Set<string>();
+
       for (const ev of matchingEv) {
-        const pub = (ev.sourceName || ev.publisher || ev.url).toLowerCase();
-        independentSources.add(pub);
+        const domain = ev.domain || (ev.sourceUrl || ev.url ? new URL(ev.sourceUrl || ev.url).hostname.replace(/^www\./, '') : ev.publisher);
+        independentSources.add(domain);
+        if (ev.relation === 'supports' || ev.relationToClaim === 'SUPPORTS') {
+          supDomains.add(domain);
+        } else if (ev.relation === 'contradicts' || ev.relationToClaim === 'CONTRADICTS') {
+          conDomains.add(domain);
+        }
       }
+
+      claim.rawSourceCount = matchingEv.length;
+      claim.independentSourceCount = independentSources.size;
+      claim.independentSupportingSources = supDomains.size;
+      claim.independentContradictingSources = conDomains.size;
+      claim.unclearSources = unclearItems.length;
 
       // Classify highest Evidence Quality (HIGH, MEDIUM, LOW)
       let evidenceQuality: 'HIGH' | 'MEDIUM' | 'LOW' = 'LOW';
@@ -226,11 +240,30 @@ export class CredibilityScorerService {
       const importance = typeof claim.importance === 'number' ? claim.importance : 0.5;
       const normalizedImp = importance > 1 ? importance / 100 : importance;
 
-      // 1. Contradiction Priority (Requirement 6): Direct contradiction dominates
-      if (contradictingItems.length > 0) {
+      // 1. Contradiction Priority & Conflict Handling (Requirements 6 & 10)
+      if (conDomains.size > 0 && supDomains.size > 0) {
+        // Conflicting sources detected
+        claim.consensusStatus = 'CONFLICTING_EVIDENCE';
+        const hasFactCheckRefutation = matchingEv.some(
+          (e) => (e.sourceTier <= 2 || e.sourceType === 'fact_check') && (e.relation === 'contradicts' || e.relationToClaim === 'CONTRADICTS')
+        );
+
+        if (hasFactCheckRefutation) {
+          claim.relation = 'contradicts';
+          claim.claimScore = normalizedImp >= 0.65 ? 5 : 15;
+          claim.confidence = 90;
+          claim.reasoning =
+            contradictingItems[0]?.explanation ||
+            `Fact-checkers refute this assertion despite conflicting reports.`;
+        } else {
+          claim.relation = 'contradicts';
+          claim.claimScore = 20;
+          claim.confidence = 65; // Reduced confidence for genuine conflict
+          claim.reasoning = `Reliable sources disagree or provide conflicting information regarding this assertion.`;
+        }
+      } else if (contradictingItems.length > 0) {
+        claim.consensusStatus = 'UNANIMOUS_CONTRADICTION';
         claim.relation = 'contradicts';
-        // Hard Contradiction Penalty (Requirement 2):
-        // If high-importance claim has strong contradicting evidence -> claimScore <= 10 (or <= 20)
         if (normalizedImp >= 0.65) {
           claim.claimScore = 5;
         } else {
@@ -243,10 +276,10 @@ export class CredibilityScorerService {
       }
       // 2. Direct Support
       else if (supportingItems.length > 0) {
+        claim.consensusStatus = 'UNANIMOUS_SUPPORT';
         claim.relation = 'supports';
         const baseScore = Math.max(85, maxSourceScore);
-        // Independent diversity boost
-        const diversityBonus = independentSources.size >= 2 ? 5 : 0;
+        const diversityBonus = supDomains.size >= 2 ? 5 : 0;
         claim.claimScore = Math.min(98, baseScore + diversityBonus);
         claim.confidence = Math.min(98, Math.max(80, supportingItems[0]?.confidence || 90));
         claim.reasoning =
@@ -255,8 +288,9 @@ export class CredibilityScorerService {
       }
       // 3. Unclear / Neutral (Requirement 7): Lack of evidence is NEVER false
       else {
+        claim.consensusStatus = 'INSUFFICIENT_EVIDENCE';
         claim.relation = 'unclear';
-        claim.claimScore = matchingEv.length > 0 ? 52 : 50; // Neutral 50
+        claim.claimScore = matchingEv.length > 0 ? 52 : 50;
         claim.confidence = matchingEv.length > 0 ? 50 : 35;
         claim.reasoning =
           unclearItems[0]?.explanation ||
