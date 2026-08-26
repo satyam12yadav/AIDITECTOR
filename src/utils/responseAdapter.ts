@@ -134,6 +134,19 @@ export const transformBackendResponseToUi = (
       }
     }
 
+    const calculatedScore =
+      typeof c.claimScore === 'number'
+        ? c.claimScore
+        : inferredStatus === 'supported'
+        ? 90
+        : inferredStatus === 'contradicted'
+        ? 8
+        : 50;
+
+    const strongestSource =
+      c.strongestSource ||
+      (matchingEvidence.length > 0 ? matchingEvidence[0]?.sourceName || matchingEvidence[0]?.publisher : undefined);
+
     return {
       id: claimId,
       claimId: (c.id || `CL-${idx + 1}`).toUpperCase(),
@@ -142,7 +155,17 @@ export const transformBackendResponseToUi = (
       statusLabel,
       importance: c.importance,
       claimType: c.claim_type,
-      flagReason,
+      flagReason: c.reasoning || flagReason,
+      claimScore: calculatedScore,
+      confidence: c.confidence || c.evaluation?.confidence || (inferredStatus === 'unverified' ? 45 : 90),
+      evidenceCount: c.evidenceCount ?? matchingEvidence.length,
+      supportingEvidenceCount:
+        c.supportingEvidenceCount ?? matchingEvidence.filter((e: any) => e.relation === 'supports').length,
+      contradictingEvidenceCount:
+        c.contradictingEvidenceCount ?? matchingEvidence.filter((e: any) => e.relation === 'contradicts').length,
+      strongestSource,
+      evidenceQuality: c.evidenceQuality || (matchingEvidence.some((e: any) => e.sourceTier <= 2) ? 'HIGH' : 'MEDIUM'),
+      reasoning: c.reasoning || c.evaluation?.reasoning || flagReason,
       evaluation: c.evaluation,
       evidence: matchingEvidence,
     };

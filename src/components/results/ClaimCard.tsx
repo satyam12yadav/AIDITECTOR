@@ -61,9 +61,24 @@ export const ClaimCard: React.FC<ClaimCardProps> = ({
               </span>
             )}
 
-            {claim.claimType && (
-              <span className="font-label-code text-[11px] bg-surface-container text-on-surface-variant px-2 py-0.5 rounded border border-outline-variant uppercase">
-                {claim.claimType}
+            {claim.claimScore !== undefined && (
+              <span
+                className={`font-label-code text-[11px] font-bold px-2 py-0.5 rounded border flex items-center gap-1 ${
+                  claim.claimScore >= 80
+                    ? 'bg-[#ecfdf5] text-[#065f46] border-[#a7f3d0]'
+                    : claim.claimScore <= 25
+                    ? 'bg-[#fef2f2] text-[#991b1b] border-[#fecaca]'
+                    : 'bg-surface-container text-on-surface-variant border-outline-variant'
+                }`}
+              >
+                Score: {claim.claimScore}/100
+              </span>
+            )}
+
+            {claim.strongestSource && (
+              <span className="font-label-code text-[11px] bg-surface-container text-on-surface-variant px-2 py-0.5 rounded border border-outline-variant flex items-center gap-1">
+                <span className="material-symbols-outlined text-[12px] text-outline">verified</span>
+                {claim.strongestSource}
               </span>
             )}
           </div>
@@ -72,12 +87,12 @@ export const ClaimCard: React.FC<ClaimCardProps> = ({
             "{claim.statement}"
           </h3>
 
-          {claim.flagReason && (
+          {claim.reasoning || claim.flagReason ? (
             <p className="mt-2 text-xs font-body-sm text-on-surface-variant flex items-center gap-1.5">
               <span className="material-symbols-outlined text-[14px] text-outline">info</span>
-              <span>{claim.flagReason}</span>
+              <span>{claim.reasoning || claim.flagReason}</span>
             </p>
-          )}
+          ) : null}
         </div>
 
         <div className="flex items-center gap-3 shrink-0">

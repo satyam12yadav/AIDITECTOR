@@ -22,7 +22,7 @@ export interface CredibilityScoringResult {
 
 export class CredibilityScorerService {
   /**
-   * Computes the calibrated 5-pillar credibility score for multi-claim verification
+   * Computes the calibrated claim-level and article-level credibility score for multi-claim verification
    */
   public computeCredibilityScore(
     article: ArticleMetadata,
@@ -31,73 +31,104 @@ export class CredibilityScorerService {
   ): CredibilityScoringResult {
     const limitations: string[] = [];
 
-    // 1. Calculate each of the 5 independent components (0-100)
+    // 1. Process and calibrate each individual claim independently
+    this.evaluateIndividualClaims(claims, evidence);
+
+    // 2. Calculate the 5 independent architectural components (0-100)
     const evidenceSupport = this.calculateEvidenceSupport(claims, evidence);
     const sourceReliability = this.calculateSourceReliability(article, evidence, limitations);
     const crossSourceAgreement = this.calculateCrossSourceAgreement(evidence, limitations);
     const claimVerification = this.calculateClaimVerification(claims, evidence, limitations);
     const articleQuality = this.calculateArticleQuality(article, claims, evidence, limitations);
 
-    // 2. Apply calibrated weighted formula:
-    // finalScore = evidenceSupport * 0.30 + sourceReliability * 0.25 + crossSourceAgreement * 0.20 + claimVerification * 0.15 + articleQuality * 0.10
-    const rawScore =
-      evidenceSupport * 0.30 +
-      sourceReliability * 0.25 +
-      crossSourceAgreement * 0.20 +
-      claimVerification * 0.15 +
-      articleQuality * 0.10;
+    // 3. Multi-Claim Importance-Weighted Aggregation
+    // weightedContribution = claimScore * claimImportance
+    // overallScore = sum(weightedContribution) / sum(claimImportance)
+    let totalImportance = 0;
+    let weightedScoreSum = 0;
 
-    let finalScore = Math.max(0, Math.min(100, Math.round(rawScore)));
-
-    // 3. Multi-Claim Factual Safeguards (Cases A through E)
     let majorContradictedCount = 0;
     let totalContradictedCount = 0;
     let supportedCount = 0;
     let unclearCount = 0;
+    let strongContradictionDetected = false;
 
     for (const claim of claims) {
-      const matchingEv = evidence.filter((e) => e.claimId === claim.id);
-      const hasContradict = matchingEv.some(
-        (e) => (e.relationToClaim === 'CONTRADICTS' || e.relation === 'contradicts') && (e.relevance === 'direct' || !e.relevance)
-      );
-      const hasSupport = matchingEv.some(
-        (e) => (e.relationToClaim === 'SUPPORTS' || e.relation === 'supports') && (e.relevance === 'direct' || !e.relevance)
-      );
+      const importance = typeof claim.importance === 'number' ? claim.importance : 0.5;
+      const normalizedImp = importance > 1 ? importance / 100 : importance;
+      const weight = Math.max(0.1, Math.min(1.0, normalizedImp));
+      totalImportance += weight;
 
-      const importance = claim.importance || 0.5;
+      const claimScore = typeof claim.claimScore === 'number' ? claim.claimScore : 50;
+      weightedScoreSum += claimScore * weight;
 
-      if (hasContradict) {
+      if (claim.relation === 'contradicts') {
         totalContradictedCount++;
-        if (importance >= 0.7) {
+        if (weight >= 0.65) {
           majorContradictedCount++;
+          if (claim.evidenceQuality === 'HIGH' || claim.contradictingEvidenceCount! >= 1) {
+            strongContradictionDetected = true;
+          }
         }
-      } else if (hasSupport) {
+      } else if (claim.relation === 'supports') {
         supportedCount++;
       } else {
         unclearCount++;
       }
     }
 
-    // Case D: Multiple major claims contradicted -> Very low credibility (<= 20)
+    const rawImportanceWeightedScore =
+      totalImportance > 0 ? Math.round(weightedScoreSum / totalImportance) : 50;
+
+    // Component weighted score from 5 pillars
+    const raw5PillarScore =
+      evidenceSupport * 0.30 +
+      sourceReliability * 0.25 +
+      crossSourceAgreement * 0.20 +
+      claimVerification * 0.15 +
+      articleQuality * 0.10;
+
+    // Combined initial score (60% importance-weighted claim scores + 40% 5-pillar systemic score)
+    let combinedScore = Math.round(rawImportanceWeightedScore * 0.6 + raw5PillarScore * 0.4);
+
+    // 4. Deterministic Guardrails & Hard Contradiction Penalties (Requirement 2, 3, 11)
+    // Guardrail 1: Multiple major claims contradicted -> Very low credibility (<= 20)
     if (majorContradictedCount >= 2 || totalContradictedCount >= 2) {
-      finalScore = Math.min(finalScore, 20);
+      combinedScore = Math.min(combinedScore, 18);
+      limitations.push(`Multiple significant assertions (${totalContradictedCount} contradicted) conflict with independent verified records.`);
     }
-    // Case C: Single major claim contradicted -> Cap credibility at low tier (<= 25)
-    else if (majorContradictedCount >= 1 || totalContradictedCount >= 1) {
-      finalScore = Math.min(finalScore, 25);
+    // Guardrail 2: Single major factual claim strongly contradicted -> Cap credibility at low tier (<= 25)
+    else if (majorContradictedCount >= 1 || (totalContradictedCount >= 1 && strongContradictionDetected)) {
+      combinedScore = Math.min(combinedScore, 25);
+      limitations.push('A major high-importance factual claim is contradicted by authoritative sources.');
     }
-    // Case E: Most claims unclear -> Neutral unverified baseline (40 - 60)
-    else if (supportedCount === 0 && unclearCount > 0) {
-      finalScore = Math.min(60, Math.max(40, finalScore));
+    // Guardrail 3: Minor claim contradicted (importance < 0.65) -> Cap at 45
+    else if (totalContradictedCount >= 1) {
+      combinedScore = Math.min(combinedScore, 45);
+      limitations.push('One secondary assertion was contradicted by external records.');
+    }
+    // Guardrail 4: All claims are unclear (zero evidence) -> Neutral unverified baseline (45-55), NEVER false
+    else if (supportedCount === 0 && unclearCount > 0 && totalContradictedCount === 0) {
+      combinedScore = Math.min(58, Math.max(45, combinedScore));
+    }
+    // Guardrail 5: All important claims supported by strong independent evidence -> Allow high score (>= 80-95)
+    else if (supportedCount >= 1 && totalContradictedCount === 0 && unclearCount === 0) {
+      combinedScore = Math.max(combinedScore, 85);
+    }
+    // Guardrail 6: Minor unclear claim with multiple supported major claims -> Keep credible (>= 75-90)
+    else if (supportedCount >= 2 && totalContradictedCount === 0 && unclearCount <= 1) {
+      combinedScore = Math.max(combinedScore, 78);
     }
 
-    // 4. Map to Verdict tier
+    const finalScore = Math.max(0, Math.min(100, combinedScore));
+
+    // 5. Map to calibrated Verdict tier (Requirement 8)
     const verdict = this.getVerdict(finalScore);
 
-    // 5. Calculate Confidence (0.0 to 1.0)
+    // 6. Calculate Confidence (0.0 to 1.0)
     const confidence = this.calculateConfidence(claims, evidence, article);
 
-    // 6. Generate dynamic "Why This Score?" Multi-Claim Summary
+    // 7. Dynamic "Why This Score?" Explainability (Requirement 10 & 18)
     const whyThisScore = this.generateWhyThisScore(
       claims.length,
       supportedCount,
@@ -116,10 +147,7 @@ export class CredibilityScorerService {
       whyThisScore,
     };
 
-    // 7. Generate transparent summary
-    const summary = whyThisScore;
-
-    // 8. Generate transparent diagnostics (Requirement 10)
+    // 8. Generate transparent diagnostics
     const diagnostics = this.generateDiagnostics(claims, evidence);
 
     return {
@@ -133,7 +161,7 @@ export class CredibilityScorerService {
         articleQuality,
       },
       confidence,
-      summary,
+      summary: whyThisScore,
       limitations,
       diagnostics,
       articleSummary,
@@ -141,8 +169,104 @@ export class CredibilityScorerService {
   }
 
   /**
+   * Calibrates and sets claim-level verdict, score, evidence counts, and quality for each claim
+   */
+  public evaluateIndividualClaims(
+    claims: ExtractedClaim[],
+    evidence: RetrievedEvidenceItem[]
+  ): void {
+    for (const claim of claims) {
+      const matchingEv = evidence.filter((e) => e.claimId === claim.id);
+      claim.evidenceCount = matchingEv.length;
+
+      // Group by relation
+      const contradictingItems = matchingEv.filter(
+        (e) => (e.relationToClaim === 'CONTRADICTS' || e.relation === 'contradicts') && (e.relevance === 'direct' || !e.relevance)
+      );
+      const supportingItems = matchingEv.filter(
+        (e) => (e.relationToClaim === 'SUPPORTS' || e.relation === 'supports') && (e.relevance === 'direct' || !e.relevance)
+      );
+      const unclearItems = matchingEv.filter(
+        (e) => !contradictingItems.includes(e) && !supportingItems.includes(e)
+      );
+
+      claim.contradictingEvidenceCount = contradictingItems.length;
+      claim.supportingEvidenceCount = supportingItems.length;
+
+      // Deduplicate independent publishers
+      const independentSources = new Set<string>();
+      for (const ev of matchingEv) {
+        const pub = (ev.sourceName || ev.publisher || ev.url).toLowerCase();
+        independentSources.add(pub);
+      }
+
+      // Classify highest Evidence Quality (HIGH, MEDIUM, LOW)
+      let evidenceQuality: 'HIGH' | 'MEDIUM' | 'LOW' = 'LOW';
+      let strongestSource = 'None';
+      let maxSourceScore = 0;
+
+      for (const ev of matchingEv) {
+        const tier = ev.sourceTier || 3;
+        const score = ev.credibilityScore || 50;
+        if (score > maxSourceScore) {
+          maxSourceScore = score;
+          strongestSource = ev.sourceName || ev.publisher;
+        }
+
+        if (tier <= 2 || tier === 4 || (tier === 3 && score >= 80)) {
+          evidenceQuality = 'HIGH';
+        } else if (tier === 3 && evidenceQuality !== 'HIGH') {
+          evidenceQuality = 'MEDIUM';
+        }
+      }
+
+      claim.evidenceQuality = evidenceQuality;
+      claim.strongestSource = strongestSource !== 'None' ? strongestSource : undefined;
+
+      const importance = typeof claim.importance === 'number' ? claim.importance : 0.5;
+      const normalizedImp = importance > 1 ? importance / 100 : importance;
+
+      // 1. Contradiction Priority (Requirement 6): Direct contradiction dominates
+      if (contradictingItems.length > 0) {
+        claim.relation = 'contradicts';
+        // Hard Contradiction Penalty (Requirement 2):
+        // If high-importance claim has strong contradicting evidence -> claimScore <= 10 (or <= 20)
+        if (normalizedImp >= 0.65) {
+          claim.claimScore = 5;
+        } else {
+          claim.claimScore = 15;
+        }
+        claim.confidence = Math.min(99, Math.max(85, contradictingItems[0]?.confidence || 90));
+        claim.reasoning =
+          contradictingItems[0]?.explanation ||
+          `Assertion is directly contradicted by ${strongestSource !== 'None' ? strongestSource : 'authoritative records'}.`;
+      }
+      // 2. Direct Support
+      else if (supportingItems.length > 0) {
+        claim.relation = 'supports';
+        const baseScore = Math.max(85, maxSourceScore);
+        // Independent diversity boost
+        const diversityBonus = independentSources.size >= 2 ? 5 : 0;
+        claim.claimScore = Math.min(98, baseScore + diversityBonus);
+        claim.confidence = Math.min(98, Math.max(80, supportingItems[0]?.confidence || 90));
+        claim.reasoning =
+          supportingItems[0]?.explanation ||
+          `Assertion is corroborated by ${strongestSource !== 'None' ? strongestSource : 'independent reporting'}.`;
+      }
+      // 3. Unclear / Neutral (Requirement 7): Lack of evidence is NEVER false
+      else {
+        claim.relation = 'unclear';
+        claim.claimScore = matchingEv.length > 0 ? 52 : 50; // Neutral 50
+        claim.confidence = matchingEv.length > 0 ? 50 : 35;
+        claim.reasoning =
+          unclearItems[0]?.explanation ||
+          'Independent external evidence could not be located to verify or contradict this specific assertion.';
+      }
+    }
+  }
+
+  /**
    * Component 1: Evidence Support (30% weight)
-   * DIRECT evidence carries full weight; RELATED carries low weight (max 55); CONTRADICT carries 0.
    */
   public calculateEvidenceSupport(
     claims: ExtractedClaim[],
@@ -154,60 +278,27 @@ export class CredibilityScorerService {
 
     let totalWeight = 0;
     let weightedSum = 0;
-    let hasHighImportanceContradiction = false;
+    let hasMajorContradiction = false;
 
     for (const claim of claims) {
-      const weight = Math.max(0.1, claim.importance || 0.5);
+      const importance = typeof claim.importance === 'number' ? claim.importance : 0.5;
+      const weight = Math.max(0.1, importance > 1 ? importance / 100 : importance);
       totalWeight += weight;
 
-      const matchingEv = evidence.filter((e) => e.claimId === claim.id);
-
-      if (matchingEv.length === 0) {
-        // No evidence: neutral baseline 50 (absence of evidence is not falsity)
-        weightedSum += 50 * weight;
-        continue;
-      }
-
-      const directContradictions = matchingEv.filter(
-        (e) =>
-          (e.relationToClaim === 'CONTRADICTS' || e.relation === 'contradicts') &&
-          (e.relevance === 'direct' || !e.relevance)
-      );
-
-      const directSupports = matchingEv.filter(
-        (e) =>
-          (e.relationToClaim === 'SUPPORTS' || e.relation === 'supports') &&
-          (e.relevance === 'direct' || !e.relevance)
-      );
-
-      if (directContradictions.length > 0) {
-        if (weight >= 0.7) {
-          hasHighImportanceContradiction = true;
-        }
-        weightedSum += 0 * weight; // Contradiction: 0 score
-      } else if (directSupports.length > 0) {
-        // Evaluate direct support strength based on source tiers and count
-        const maxSourceScore = directSupports.reduce((acc, curr) => {
-          const score = curr.credibilityScore || 85;
-          return Math.max(acc, score);
-        }, 85);
-
-        // Multi-source bonus if multiple independent direct sources support the claim
-        const multiSourceBonus = directSupports.length >= 2 ? 5 : 0;
-        const claimScore = Math.min(100, maxSourceScore + multiSourceBonus);
-
-        weightedSum += claimScore * weight;
+      if (claim.relation === 'contradicts') {
+        if (weight >= 0.65) hasMajorContradiction = true;
+        weightedSum += 0 * weight; // 0 contribution
+      } else if (claim.relation === 'supports') {
+        const score = claim.claimScore || 90;
+        weightedSum += score * weight;
       } else {
-        // Only related or unclear context: neutral 55
-        weightedSum += 55 * weight;
+        weightedSum += 52 * weight; // Neutral 52
       }
     }
 
     let result = totalWeight > 0 ? weightedSum / totalWeight : 50;
-
-    // High importance contradiction severely limits evidence support
-    if (hasHighImportanceContradiction) {
-      result = Math.min(result, 20);
+    if (hasMajorContradiction) {
+      result = Math.min(result, 15);
     }
 
     return Math.max(0, Math.min(100, Math.round(result)));
@@ -215,7 +306,6 @@ export class CredibilityScorerService {
 
   /**
    * Component 2: Source Reliability (25% weight)
-   * Evaluates unique institutional publishers matched against the 54 verified sources registry.
    */
   public calculateSourceReliability(
     article: ArticleMetadata,
@@ -224,7 +314,7 @@ export class CredibilityScorerService {
   ): number {
     const publisherScores = new Map<string, number>();
 
-    // Register evidence source scores (deduplicated by publisher domain)
+    // Deduplicate by normalized domain / publisher (Requirement 5)
     for (const item of evidence) {
       const pub = (item.sourceName || item.publisher || item.url).toLowerCase();
       if (!publisherScores.has(pub)) {
@@ -246,13 +336,10 @@ export class CredibilityScorerService {
         if (pubLower.includes('.edu') || pubLower.includes('.ac.in')) return 92;
         return 65;
       }
-      return 50; // Neutral baseline for unverified direct text
+      return 50;
     }
 
-    const scores = Array.from(publisherScores.values());
-    scores.sort((a, b) => b - a);
-
-    // Multi-source boost: highest tier gets 60% weight, secondary gets 40%
+    const scores = Array.from(publisherScores.values()).sort((a, b) => b - a);
     if (scores.length >= 2) {
       return Math.round(scores[0] * 0.6 + scores[1] * 0.4);
     }
@@ -261,14 +348,13 @@ export class CredibilityScorerService {
 
   /**
    * Component 3: Cross-Source Agreement (20% weight)
-   * Measures consensus vs conflict across independent retrieved evidence sources.
    */
   public calculateCrossSourceAgreement(
     evidence: RetrievedEvidenceItem[],
     limitations: string[]
   ): number {
     if (!evidence || evidence.length === 0) {
-      return 50; // Neutral baseline
+      return 50;
     }
 
     const directSupporting = evidence.filter(
@@ -282,7 +368,7 @@ export class CredibilityScorerService {
     const totalDecisive = directSupporting + directContradicting;
 
     if (totalDecisive === 0) {
-      return 55; // All sources are neutral/unclear context
+      return 52;
     }
 
     if (directContradicting > 0 && directSupporting === 0) {
@@ -293,10 +379,9 @@ export class CredibilityScorerService {
     if (directContradicting > 0 && directSupporting > 0) {
       limitations.push('Conflicting cross-source reporting detected between retrieved publications.');
       const supportRatio = directSupporting / totalDecisive;
-      return Math.round(supportRatio * 50); // High disagreement penalty
+      return Math.round(supportRatio * 40); // High disagreement penalty
     }
 
-    // Unanimous positive agreement
     if (directSupporting >= 2) {
       return 100;
     }
@@ -305,7 +390,6 @@ export class CredibilityScorerService {
 
   /**
    * Component 4: Claim-Level Verification (15% weight)
-   * Direct verification rate based on verified claims vs contradicted claims.
    */
   public calculateClaimVerification(
     claims: ExtractedClaim[],
@@ -322,26 +406,19 @@ export class CredibilityScorerService {
     let weightedVerified = 0;
 
     for (const claim of claims) {
-      const weight = Math.max(0.1, claim.importance || 0.5);
+      const importance = typeof claim.importance === 'number' ? claim.importance : 0.5;
+      const weight = Math.max(0.1, importance > 1 ? importance / 100 : importance);
       totalWeight += weight;
 
-      const matchingEv = evidence.filter((e) => e.claimId === claim.id);
-      const isContradicted = matchingEv.some(
-        (e) => (e.relationToClaim === 'CONTRADICTS' || e.relation === 'contradicts') && (e.relevance === 'direct' || !e.relevance)
-      );
-      const isVerified = matchingEv.some(
-        (e) => (e.relationToClaim === 'SUPPORTS' || e.relation === 'supports') && (e.relevance === 'direct' || !e.relevance)
-      );
-
-      if (isContradicted) {
+      if (claim.relation === 'contradicts') {
         contradictedCount++;
-      } else if (isVerified) {
+      } else if (claim.relation === 'supports') {
         verifiedCount++;
         weightedVerified += 100 * weight;
       } else {
-        weightedVerified += 50 * weight; // Unverified neutral
-        if (weight >= 0.7) {
-          limitations.push(`High-priority claim '${claim.text.slice(0, 50)}...' could not be independently verified.`);
+        weightedVerified += 50 * weight;
+        if (weight >= 0.65) {
+          limitations.push(`High-priority claim '${claim.text.slice(0, 45)}...' could not be independently verified.`);
         }
       }
     }
@@ -365,18 +442,10 @@ export class CredibilityScorerService {
     const isDirectIngestion = !article.publisher || article.publisher === 'Direct Text Ingestion';
 
     if (isDirectIngestion) {
-      const hasContradictions = evidence.some(
-        (e) => (e.relationToClaim === 'CONTRADICTS' || e.relation === 'contradicts') && e.relevance === 'direct'
-      );
-      if (hasContradictions) {
-        return 70;
-      }
-      const hasVerifiedClaims = evidence.some(
-        (e) => (e.relationToClaim === 'SUPPORTS' || e.relation === 'supports') && e.relevance === 'direct'
-      );
-      if (hasVerifiedClaims) {
-        return 90;
-      }
+      const hasContradictions = claims.some((c) => c.relation === 'contradicts');
+      if (hasContradictions) return 70;
+      const hasVerifiedClaims = claims.some((c) => c.relation === 'supports');
+      if (hasVerifiedClaims) return 90;
       return 70;
     }
 
@@ -411,7 +480,7 @@ export class CredibilityScorerService {
   }
 
   /**
-   * Generates dynamic "Why This Score?" text from actual claim verification metrics
+   * Generates dynamic explainability text conforming to Requirement 10
    */
   private generateWhyThisScore(
     totalClaims: number,
@@ -423,29 +492,29 @@ export class CredibilityScorerService {
   ): string {
     const parts: string[] = [];
 
-    if (supported > 0) {
+    if (majorContradicted > 0) {
+      parts.push(
+        `The article contains ${majorContradicted === 1 ? 'one high-importance factual claim that is' : `${majorContradicted} high-importance factual claims that are`} directly contradicted by independent authoritative sources. Although other claims may be supported, the major contradiction substantially lowers the overall credibility score.`
+      );
+    } else if (contradicted > 0) {
+      parts.push(
+        `One or more assertions (${contradicted} contradicted) conflict with verified external records, lowering overall credibility.`
+      );
+    }
+
+    if (supported > 0 && majorContradicted === 0 && contradicted === 0) {
       parts.push(
         `${supported} of ${totalClaims} factual ${totalClaims === 1 ? 'claim was' : 'claims were'} supported by credible independent sources.`
       );
     }
 
-    if (majorContradicted > 0) {
-      parts.push(
-        `${majorContradicted === 1 ? 'One high-importance claim was' : `${majorContradicted} high-importance claims were`} contradicted by authoritative sources, significantly reducing overall credibility.`
-      );
-    } else if (contradicted > 0) {
-      parts.push(
-        `${contradicted === 1 ? 'One claim was' : `${contradicted} claims were`} contradicted by verified external records.`
-      );
-    }
-
     if (unclear > 0 && supported === 0 && contradicted === 0) {
       parts.push(
-        'Independent external evidence could not be located to verify the claims. The content remains unverified pending corroboration.'
+        'Independent external evidence could not be located to verify the claims. The content remains unverified pending empirical corroboration.'
       );
-    } else if (unclear > 0) {
+    } else if (unclear > 0 && majorContradicted === 0 && contradicted === 0) {
       parts.push(
-        `${unclear === 1 ? 'One secondary assertion' : `${unclear} assertions`} could not be independently verified.`
+        `${unclear === 1 ? 'One minor assertion' : `${unclear} assertions`} could not be independently verified.`
       );
     }
 
@@ -486,14 +555,19 @@ export class CredibilityScorerService {
   }
 
   /**
-   * Maps numerical score to official Verdict category
+   * Maps numerical score to calibrated Verdict category (Requirement 8)
+   * 80-100 = PROBABLY CREDIBLE
+   * 60-79 = MOSTLY CREDIBLE / NEEDS VERIFICATION
+   * 40-59 = UNCERTAIN / NEEDS VERIFICATION
+   * 20-39 = LIKELY MISLEADING
+   * 0-19 = PROBABLY FALSE / HIGHLY SUSPICIOUS
    */
   public getVerdict(score: number): CredibilityVerdict {
-    if (score >= 90) return 'Highly Credible';
     if (score >= 80) return 'Probably Credible';
-    if (score >= 50) return 'Needs Verification';
-    if (score >= 25) return 'Likely Misleading';
-    return 'Highly Suspicious';
+    if (score >= 60) return 'Mostly Credible';
+    if (score >= 40) return 'Needs Verification';
+    if (score >= 20) return 'Likely Misleading';
+    return 'Probably False';
   }
 
   /**

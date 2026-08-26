@@ -56,6 +56,17 @@ export interface ExtractedClaim {
   value?: string;
   entities?: ExtractedEntities;
   evaluation?: ClaimForensicEvaluation;
+
+  // Step 7: Calibrated Claim-Level Fields
+  relation?: 'supports' | 'contradicts' | 'unclear';
+  claimScore?: number; // 0 - 100
+  confidence?: number; // 0 - 100
+  evidenceCount?: number;
+  supportingEvidenceCount?: number;
+  contradictingEvidenceCount?: number;
+  strongestSource?: string;
+  evidenceQuality?: 'HIGH' | 'MEDIUM' | 'LOW';
+  reasoning?: string;
 }
 
 export type SourceType = 'official' | 'news' | 'fact_check' | 'reference' | 'encyclopedia' | 'academic' | 'other';
@@ -93,9 +104,12 @@ export interface RetrievedEvidenceItem {
 export type CredibilityVerdict =
   | 'Highly Credible'
   | 'Probably Credible'
+  | 'Mostly Credible'
   | 'Needs Verification'
+  | 'Uncertain'
   | 'Likely Misleading'
-  | 'Highly Suspicious';
+  | 'Highly Suspicious'
+  | 'Probably False';
 
 export interface ScoreBreakdown {
   evidenceSupport: number;

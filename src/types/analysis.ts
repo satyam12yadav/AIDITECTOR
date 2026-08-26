@@ -28,6 +28,14 @@ export interface ClaimItem {
   importance?: number;
   claimType?: string;
   flagReason?: string;
+  claimScore?: number;
+  confidence?: number;
+  evidenceCount?: number;
+  supportingEvidenceCount?: number;
+  contradictingEvidenceCount?: number;
+  strongestSource?: string;
+  evidenceQuality?: 'HIGH' | 'MEDIUM' | 'LOW';
+  reasoning?: string;
   evidence: EvidenceItem[];
 }
 
