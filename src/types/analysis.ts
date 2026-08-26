@@ -56,6 +56,15 @@ export type VerdictType =
   | 'HIGHLY_SUSPICIOUS'
   | 'UNVERIFIED';
 
+export interface MultiClaimArticleSummary {
+  claimsAnalyzed: number;
+  supportedCount: number;
+  contradictedCount: number;
+  unclearCount: number;
+  majorContradictedCount: number;
+  whyThisScore: string;
+}
+
 export interface AnalysisResult {
   id: string;
   title: string;
@@ -75,6 +84,7 @@ export interface AnalysisResult {
   sourceProfile: SourceProfile;
   totalClaimsIdentified: number;
   wordCount?: number;
+  articleSummary?: MultiClaimArticleSummary;
 }
 
 export type AnalysisInputMode = 'url' | 'text';

@@ -33,7 +33,7 @@ const TIME_SENSITIVE_TRIGGERS = [
 
 export class EvidenceRetrieverService {
   /**
-   * Retrieves verified multi-source evidence for a list of extracted claims concurrently
+   * Retrieves verified multi-source evidence for multiple extracted claims concurrently
    */
   public async retrieveEvidence(claims: ExtractedClaim[]): Promise<RetrievedEvidenceItem[]> {
     if (!claims || claims.length === 0) {
@@ -41,7 +41,8 @@ export class EvidenceRetrieverService {
     }
 
     const tStart = Date.now();
-    const prioritizedClaims = claims.slice(0, 3);
+    // Prioritize up to top 6 claims for multi-claim article verification
+    const prioritizedClaims = claims.slice(0, 6);
 
     const evidencePromises = prioritizedClaims.map(async (claim) => {
       const isTimeSensitive = TIME_SENSITIVE_TRIGGERS.some((pat) => pat.test(claim.text));
@@ -63,7 +64,7 @@ export class EvidenceRetrieverService {
       }
     }
 
-    console.log(`[TIMING] Multi-source evidence retrieval completed in ${Date.now() - tStart}ms (total items: ${flattened.length})`);
+    console.log(`[TIMING] Multi-source evidence retrieval completed in ${Date.now() - tStart}ms (claims: ${prioritizedClaims.length}, total items: ${flattened.length})`);
     return flattened;
   }
 
@@ -83,7 +84,19 @@ export class EvidenceRetrieverService {
       queries.add(`${claimTriple.entity} ${claimTriple.claimValue}`);
     }
 
-    // 2. Semantic query expansion for superlatives & comparisons
+    // 2. If numerical assertion, include number/quantity topic
+    if (claimTriple && claimTriple.attribute === 'numerical') {
+      queries.add(`${claimTriple.entity} ${claimTriple.claimValue}`);
+      queries.add(`${cleaned}`);
+    }
+
+    // 3. If date / temporal assertion, include event + date
+    if (claimTriple && claimTriple.attribute === 'temporal') {
+      queries.add(`${claimTriple.entity} ${claimTriple.claimValue}`);
+      queries.add(`${cleaned}`);
+    }
+
+    // 4. Semantic query expansion for superlatives & comparisons
     if (/\b(largest|biggest|smallest|highest|tallest|deepest|longest|fastest|coldest|hottest|most populous)\b/i.test(cleaned)) {
       const superlativeMatch = cleaned.match(/\b(largest|biggest|smallest|highest|tallest|deepest|longest|fastest|coldest|hottest|most populous)\s*(\w+)?/i);
       const subject = claimTriple?.entity || cleaned.split(' ')[0];
@@ -94,13 +107,13 @@ export class EvidenceRetrieverService {
       }
     }
 
-    // 3. Time-sensitive Political queries
+    // 5. Time-sensitive Political queries
     if (/ruler party/i.test(cleaned)) {
       const fixed = cleaned.replace(/ruler party/i, 'ruling party');
       queries.add(`${fixed} Union government`);
     }
 
-    // 4. Primary Clean Query (Filtered stop words)
+    // 6. Primary Clean Query (Filtered stop words)
     if (queries.size === 0) {
       const stopWords = new Set(['is', 'are', 'was', 'were', 'the', 'a', 'an', 'of', 'and', 'that', 'with', 'from', 'at', 'in', 'on', 'to']);
       const words = cleaned.split(' ').filter(Boolean);
@@ -127,10 +140,13 @@ export class EvidenceRetrieverService {
 
     const rawCandidates: RawCandidate[] = [];
     const seenUrls = new Set<string>();
+    const seenTitles = new Set<string>();
 
     const addCandidate = (c: RawCandidate) => {
-      if (c.url && !seenUrls.has(c.url) && this.isValidEvidenceUrl(c.url)) {
+      const normTitle = c.title.toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (c.url && !seenUrls.has(c.url) && !seenTitles.has(normTitle) && this.isValidEvidenceUrl(c.url)) {
         seenUrls.add(c.url);
+        seenTitles.add(normTitle);
         rawCandidates.push(c);
       }
     };
@@ -138,7 +154,7 @@ export class EvidenceRetrieverService {
     const isInstitutional = INSTITUTIONAL_TRIGGERS.some((pat) => pat.test(claim.text));
 
     // -------------------------------------------------------------
-    // Execute ALL Multi-Source Streams in Parallel
+    // Execute Multi-Source Streams in Parallel with 3.5s per-task abort
     // -------------------------------------------------------------
     const searchTasks: Promise<void>[] = [
       // 1. Google Fact Check API (Primary Query)

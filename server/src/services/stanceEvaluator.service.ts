@@ -73,12 +73,12 @@ EVIDENCE TEXT: "${evidenceSnippet}"
 STRICT CLAIM-VERIFICATION RULES:
 1. "relation":
    - "supports" (+1): The evidence explicitly establishes the same factual proposition as the claim (e.g. claim says Ram Mandir is in Ayodhya, evidence states Ram Mandir in Ayodhya).
-   - "contradicts" (-1): The evidence explicitly establishes a CONFLICTING factual proposition for the same entity/attribute (e.g. claim says Ram Mandir is in Pakistan, evidence states Ram Mandir is located in Ayodhya, India).
+   - "contradicts" (-1): The evidence explicitly establishes a CONFLICTING factual proposition for the same entity/attribute (e.g. claim says Ram Mandir is in Pakistan, evidence states Ram Mandir is located in Ayodhya, India; or claim says ₹50,000 crore, evidence says ₹5,000 crore; or claim says January 10, evidence says January 15).
    - "unclear" (0): The evidence is related to the topic or mentions the entity, but does not establish or contradict the claim.
    CRITICAL: Do NOT classify as "supports" just because the evidence mentions the same country or entity in another context (e.g. "Pakistan condemns Ram Mandir in Ayodhya" CONTRADICTS "Ram Mandir is in Pakistan").
 
 2. "relevance":
-   - "direct": The evidence directly addresses the specific attribute (e.g. location, status) of the entity in the claim.
+   - "direct": The evidence directly addresses the specific attribute (e.g. location, number, date, status) of the entity in the claim.
    - "related": The evidence mentions the entity or general topic, but does not answer the specific assertion.
    - "irrelevant": The evidence is off-topic.
 
@@ -259,6 +259,68 @@ Return STRICT JSON only:
       }
     }
 
+    // EAV Check: Numerical / Quantity Claims (e.g. "Population is 10 million" vs "Population is 5 million", "₹50,000 crore" vs "₹5,000 crore")
+    if (claimTriple && claimTriple.attribute === 'numerical') {
+      const numCompat = entityExtractorService.checkNumericalCompatibility(claimTriple.claimValue, combined);
+      if (numCompat === 'CONTRADICTORY') {
+        return {
+          relation: 'contradicts',
+          relationToClaim: 'CONTRADICTS',
+          relevance: 'direct',
+          confidence: 92,
+          reasoning: `Numerical conflict: Claim asserts '${claimTriple.claimValue}', which contradicts numbers documented in verified reporting.`,
+          keyEvidence: evidenceSnippet.slice(0, 120),
+          stanceScore: -1,
+          relevanceScore: 1.0,
+          explanation: `Numerical conflict: Discrepancy between claim '${claimTriple.claimValue}' and evidence records.`,
+        };
+      }
+      if (numCompat === 'SUPPORTIVE') {
+        return {
+          relation: 'supports',
+          relationToClaim: 'SUPPORTS',
+          relevance: 'direct',
+          confidence: 92,
+          reasoning: `Numerical corroboration: Retrieved reporting verifies quantity '${claimTriple.claimValue}'.`,
+          keyEvidence: evidenceSnippet.slice(0, 120),
+          stanceScore: 1,
+          relevanceScore: 1.0,
+          explanation: `Numerical corroboration: Evidence verifies quantity '${claimTriple.claimValue}'.`,
+        };
+      }
+    }
+
+    // EAV Check: Date / Temporal Claims (e.g. "Event happened on January 10" vs "January 15")
+    if (claimTriple && claimTriple.attribute === 'temporal') {
+      const dateCompat = entityExtractorService.checkDateCompatibility(claimTriple.claimValue, combined);
+      if (dateCompat === 'CONTRADICTORY') {
+        return {
+          relation: 'contradicts',
+          relationToClaim: 'CONTRADICTS',
+          relevance: 'direct',
+          confidence: 92,
+          reasoning: `Date conflict: Claim asserts event occurred on '${claimTriple.claimValue}', which conflicts with dates recorded in verified records.`,
+          keyEvidence: evidenceSnippet.slice(0, 120),
+          stanceScore: -1,
+          relevanceScore: 1.0,
+          explanation: `Date conflict: Conflict with date '${claimTriple.claimValue}'.`,
+        };
+      }
+      if (dateCompat === 'SUPPORTIVE') {
+        return {
+          relation: 'supports',
+          relationToClaim: 'SUPPORTS',
+          relevance: 'direct',
+          confidence: 92,
+          reasoning: `Date corroboration: Evidence verifies timeline '${claimTriple.claimValue}'.`,
+          keyEvidence: evidenceSnippet.slice(0, 120),
+          stanceScore: 1,
+          relevanceScore: 1.0,
+          explanation: `Date corroboration: Evidence verifies timeline '${claimTriple.claimValue}'.`,
+        };
+      }
+    }
+
     // EAV Check: Superlative Claims (e.g. "Asia is the largest continent", "Asia is the smallest continent")
     if (claimTriple && claimTriple.attribute === 'superlative') {
       const claimVal = claimTriple.claimValue.toLowerCase();
@@ -352,7 +414,32 @@ Return STRICT JSON only:
       }
     }
 
-    // 5. Default: Unclear / Neutral (Absence of evidence is NOT contradiction)
+    // 5. Generic exact corroboration for non-conflicting statements
+    const keywords = claimLower
+      .replace(/[^\w\s]/g, '')
+      .split(/\s+/)
+      .filter((w) => w.length > 3 && !['that', 'this', 'with', 'from', 'have', 'were', 'about', 'what', 'which'].includes(w));
+
+    let overlap = 0;
+    for (const kw of keywords) {
+      if (combined.includes(kw)) overlap++;
+    }
+
+    if (keywords.length >= 3 && overlap / keywords.length >= 0.8) {
+      return {
+        relation: 'supports',
+        relationToClaim: 'SUPPORTS',
+        relevance: 'direct',
+        confidence: 85,
+        reasoning: 'Retrieved reporting directly corroborates key terms and factual statements.',
+        keyEvidence: evidenceSnippet.slice(0, 120),
+        stanceScore: 1,
+        relevanceScore: 1.0,
+        explanation: 'Retrieved reporting directly corroborates key terms and factual statements.',
+      };
+    }
+
+    // 6. Default: Unclear / Neutral (Absence of evidence is NOT contradiction)
     return {
       relation: 'unclear',
       relationToClaim: 'NEUTRAL',

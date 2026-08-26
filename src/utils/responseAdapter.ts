@@ -184,5 +184,6 @@ export const transformBackendResponseToUi = (
       biasRating: 'Unassessed',
     },
     totalClaimsIdentified: mappedClaims.length,
+    articleSummary: (backendData as any).articleSummary,
   };
 };

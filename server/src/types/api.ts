@@ -32,12 +32,28 @@ export interface ClaimForensicEvaluation {
   limitations: string[];
 }
 
+export type ClaimType =
+  | 'factual'
+  | 'numerical'
+  | 'geographic'
+  | 'temporal'
+  | 'political'
+  | 'scientific'
+  | 'historical'
+  | 'quote'
+  | 'event'
+  | 'other';
+
 export interface ExtractedClaim {
   id: string;
   text: string;
-  importance: number;
-  claim_type: 'factual' | 'statistical' | 'historical' | 'quote' | string;
+  importance: number; // 0.1 to 1.0 (or 10 to 100)
+  claim_type: ClaimType | string;
+  claimType?: ClaimType | string;
   isTimeSensitive?: boolean;
+  entity?: string;
+  attribute?: string;
+  value?: string;
   entities?: ExtractedEntities;
   evaluation?: ClaimForensicEvaluation;
 }
@@ -109,6 +125,15 @@ export interface ScoreDiagnosticItem {
   contributionToFinalScore: number;
 }
 
+export interface MultiClaimArticleSummary {
+  claimsAnalyzed: number;
+  supportedCount: number;
+  contradictedCount: number;
+  unclearCount: number;
+  majorContradictedCount: number;
+  whyThisScore: string;
+}
+
 export interface AnalyzeResponseData {
   article: ArticleMetadata;
   claims: ExtractedClaim[];
@@ -121,6 +146,7 @@ export interface AnalyzeResponseData {
   limitations: string[];
   reasons: string[];
   sources: SourceSummary[];
+  articleSummary?: MultiClaimArticleSummary;
   diagnostics?: ScoreDiagnosticItem[];
   timings?: Record<string, number>;
 }

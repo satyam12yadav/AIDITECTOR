@@ -2,15 +2,19 @@ import { ExtractedEntities } from '../types/api.js';
 
 export interface ClaimTriple {
   entity: string;
-  attribute: 'location' | 'superlative' | 'ruling_party' | 'quantity' | 'general';
+  attribute: 'location' | 'superlative' | 'numerical' | 'temporal' | 'ruling_party' | 'quantity' | 'general';
   claimValue: string;
+  unit?: string;
+  numericVal?: number;
 }
 
 export interface EvidenceTriple {
   entity: string;
-  attribute: 'location' | 'superlative' | 'ruling_party' | 'quantity' | 'general';
+  attribute: 'location' | 'superlative' | 'numerical' | 'temporal' | 'ruling_party' | 'quantity' | 'general';
   evidenceValue: string;
   locations: string[];
+  unit?: string;
+  numericVal?: number;
 }
 
 // Comprehensive continental & regional geographic containment dictionary
@@ -137,18 +141,18 @@ export class EntityExtractorService {
       }
     }
 
-    // 2. Numbers & Percentages
-    const numMatches = cleanText.match(/(\d+(\.\d+)?%|\$\d+(\.\d+)?|\b\d+\s*(crore|lakh|billion|million|trillion|percent|cases|km|tons)\b|\b\d{1,4}\b)/gi) || [];
+    // 2. Numbers & Quantities
+    const numMatches = cleanText.match(/(₹\s*\d+([,.]\d+)*\s*(crore|lakh)?|\$\s*\d+([,.]\d+)*\s*(billion|million|trillion)?|\b\d+([,.]\d+)*\s*(crore|lakh|billion|million|trillion|percent|%|cases|deaths|tons|km|miles|jobs)\b|\b\d{1,4}\b)/gi) || [];
     for (const n of numMatches) {
       if (n.length >= 1 && !dates.includes(n)) {
-        numbers.push(n);
+        numbers.push(n.trim());
       }
     }
 
-    // 3. Dates & Years
-    const dateMatches = cleanText.match(/(\b(19\d{2}|20\d{2})\b|\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2}(,\s+\d{4})?|\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b)/gi) || [];
+    // 3. Dates & Months & Days
+    const dateMatches = cleanText.match(/(\b(on monday|on tuesday|on wednesday|on thursday|on friday|on saturday|on sunday)\b|\bby (20\d{2}|19\d{2})\b|\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2}(,\s+\d{4})?|\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b|\b(19\d{2}|20\d{2})\b)/gi) || [];
     for (const d of dateMatches) {
-      dates.push(d);
+      dates.push(d.trim());
     }
 
     // 4. Organizations
@@ -207,7 +211,31 @@ export class EntityExtractorService {
       };
     }
 
-    // 2. Superlative assertion: e.g. "Asia is the largest continent", "Asia is smallest continent"
+    // 2. Numerical / Quantitative assertion: e.g. "The project cost ₹50,000 crore", "Population is 10 million", "create 50,000 jobs"
+    const numMatch = clean.match(/(?:cost|population|create|generated|allocated|valued at|worth|reached|is|was)\s+(₹?\s*\d+([,.]\d+)*\s*(?:crore|lakh|billion|million|trillion|percent|%|jobs)?)/i);
+    if (numMatch && numMatch[1]) {
+      const numStr = numMatch[1].replace(/,/g, '').trim();
+      const numVal = parseFloat(numStr.replace(/[^\d.]/g, ''));
+      return {
+        entity: clean.split(' ')[0],
+        attribute: 'numerical',
+        claimValue: numMatch[1].trim(),
+        numericVal: isNaN(numVal) ? undefined : numVal,
+        unit: numStr.replace(/[\d.₹$\s]/g, '').toLowerCase(),
+      };
+    }
+
+    // 3. Date / Temporal assertion: e.g. "Event happened on January 10", "Construction began on Monday", "completed by 2028"
+    const dateMatch = clean.match(/(?:happened on|occurred on|held on|began on|completed by|inaugurated on)\s+([a-zA-Z0-9,\s]+?)[.]?$/i);
+    if (dateMatch && dateMatch[1]) {
+      return {
+        entity: clean.split(' ')[0],
+        attribute: 'temporal',
+        claimValue: dateMatch[1].trim(),
+      };
+    }
+
+    // 4. Superlative assertion: e.g. "Asia is the largest continent", "Asia is smallest continent"
     if (/\b(largest|biggest|smallest|highest|tallest|deepest|longest|fastest|coldest|hottest|most populous)\b/i.test(lower)) {
       const superlative = lower.match(/\b(largest|biggest|smallest|highest|tallest|deepest|longest|fastest|coldest|hottest|most populous)\s*(?:continent|country|ocean|mountain|river|city)?/i);
       const subject = lower.includes('asia') ? 'Asia' : clean.split(' ')[0];
@@ -218,7 +246,7 @@ export class EntityExtractorService {
       };
     }
 
-    // 3. Ruling party assertion: e.g. "BJP is ruler party of India"
+    // 5. Ruling party assertion: e.g. "BJP is ruler party of India"
     if (/ruler party|ruling party|in power|holds power/i.test(lower)) {
       return {
         entity: lower.includes('bjp') ? 'BJP' : clean.split(' ')[0],
@@ -228,6 +256,70 @@ export class EntityExtractorService {
     }
 
     return null;
+  }
+
+  /**
+   * Checks numerical conflict between claim numeric value and evidence text
+   */
+  public checkNumericalCompatibility(claimValStr: string, evidenceText: string): 'SUPPORTIVE' | 'CONTRADICTORY' | 'UNRELATED' {
+    const cleanClaim = claimValStr.toLowerCase().replace(/,/g, '');
+    const cleanEv = evidenceText.toLowerCase().replace(/,/g, '');
+
+    // Extract numbers from claim
+    const cMatches = cleanClaim.match(/\d+(\.\d+)?/g);
+    if (!cMatches || cMatches.length === 0) return 'UNRELATED';
+    const cNum = parseFloat(cMatches[0]);
+
+    // Check specific unit/scale matching: e.g. 50000 crore vs 5000 crore or 10 million vs 5 million
+    const evNumMatches = cleanEv.match(/(\d+(\.\d+)?)\s*(crore|lakh|billion|million|trillion|jobs|percent|%)/g);
+    if (evNumMatches && evNumMatches.length > 0) {
+      for (const evMatch of evNumMatches) {
+        const evParts = evMatch.split(/\s+/);
+        const evVal = parseFloat(evParts[0]);
+        if (!isNaN(evVal) && !isNaN(cNum)) {
+          if (Math.abs(evVal - cNum) / Math.max(evVal, cNum) < 0.05) {
+            return 'SUPPORTIVE'; // Matches within 5%
+          } else {
+            return 'CONTRADICTORY'; // Clear numerical discrepancy
+          }
+        }
+      }
+    }
+
+    return 'UNRELATED';
+  }
+
+  /**
+   * Checks date conflict between claim date assertion and evidence text
+   */
+  public checkDateCompatibility(claimDateStr: string, evidenceText: string): 'SUPPORTIVE' | 'CONTRADICTORY' | 'UNRELATED' {
+    const cDate = claimDateStr.toLowerCase().trim();
+    const cleanEv = evidenceText.toLowerCase();
+
+    // Specific Month + Day match: e.g. "january 10" vs "january 15"
+    const monthDayPattern = /(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})/i;
+    const cMatch = cDate.match(monthDayPattern);
+
+    if (cMatch) {
+      const cMonth = cMatch[1].toLowerCase();
+      const cDay = parseInt(cMatch[2], 10);
+
+      const evMatch = cleanEv.match(monthDayPattern);
+      if (evMatch) {
+        const evMonth = evMatch[1].toLowerCase();
+        const evDay = parseInt(evMatch[2], 10);
+
+        if (cMonth === evMonth) {
+          if (cDay === evDay) {
+            return 'SUPPORTIVE';
+          } else {
+            return 'CONTRADICTORY'; // Same month, conflicting day (e.g. Jan 10 vs Jan 15)
+          }
+        }
+      }
+    }
+
+    return 'UNRELATED';
   }
 
   /**

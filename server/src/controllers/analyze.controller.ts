@@ -154,6 +154,7 @@ export const analyzeArticle = async (
       limitations: scoringResult.limitations,
       reasons: [scoringResult.summary, ...scoringResult.limitations],
       sources: Array.from(sourceMap.values()),
+      articleSummary: scoringResult.articleSummary,
       diagnostics: scoringResult.diagnostics,
       timings,
     };

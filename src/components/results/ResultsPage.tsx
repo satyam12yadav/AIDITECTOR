@@ -126,6 +126,48 @@ export const ResultsPage: React.FC<ResultsPageProps> = ({
       {/* View Content */}
       {activeTab === 'overview' && (
         <div className="space-y-8 animate-fadeIn">
+          {/* Multi-Claim Article Verdict Summary */}
+          {result.articleSummary && (
+            <div className="bg-surface-container-lowest border border-outline-variant rounded-lg p-5 md:p-6 shadow-subtle">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-outline-variant">
+                <div>
+                  <span className="font-label-caps text-xs text-outline font-bold tracking-wider uppercase">
+                    Article-Level Verification Summary
+                  </span>
+                  <h3 className="font-headline-md text-lg font-bold text-on-surface mt-0.5">
+                    {result.verdictLabel} — {result.credibilityScore}/100 Credibility Score
+                  </h3>
+                </div>
+                <button
+                  onClick={() => setActiveTab('claims')}
+                  className="self-start sm:self-auto px-3.5 py-1.5 rounded bg-surface-container hover:bg-surface-container-high border border-outline-variant text-xs font-label-caps font-bold text-primary transition-colors flex items-center gap-1.5"
+                >
+                  <span className="material-symbols-outlined text-[16px]">fact_check</span>
+                  View All Claims ({result.articleSummary.claimsAnalyzed})
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4">
+                <div className="p-3 bg-surface-container-low rounded border border-outline-variant">
+                  <div className="text-[11px] font-label-caps text-outline uppercase font-semibold">Claims Analyzed</div>
+                  <div className="text-xl font-bold font-mono text-on-surface mt-0.5">{result.articleSummary.claimsAnalyzed}</div>
+                </div>
+                <div className="p-3 bg-[#ecfdf5] rounded border border-[#a7f3d0]">
+                  <div className="text-[11px] font-label-caps text-[#065f46] uppercase font-bold">Supported</div>
+                  <div className="text-xl font-bold font-mono text-[#065f46] mt-0.5">{result.articleSummary.supportedCount}</div>
+                </div>
+                <div className="p-3 bg-[#fef2f2] rounded border border-[#fecaca]">
+                  <div className="text-[11px] font-label-caps text-[#991b1b] uppercase font-bold">Contradicted</div>
+                  <div className="text-xl font-bold font-mono text-[#991b1b] mt-0.5">{result.articleSummary.contradictedCount}</div>
+                </div>
+                <div className="p-3 bg-surface-container rounded border border-outline-variant">
+                  <div className="text-[11px] font-label-caps text-on-surface-variant uppercase font-semibold">Unclear / Pending</div>
+                  <div className="text-xl font-bold font-mono text-on-surface mt-0.5">{result.articleSummary.unclearCount}</div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* 1. Main Grid: Credibility Gauge + 5-Pillar Score Breakdown */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 md:gap-8">
             <div className="lg:col-span-7 flex">
