@@ -28,6 +28,16 @@ const server = app.listen(env.PORT, HOST, () => {
   }
 });
 
+server.on('error', (err: any) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`\n❌ [SERVER ERROR] Port ${env.PORT} is already in use by another running process.`);
+    console.error(`👉 Solution: Kill the process using: "lsof -ti :${env.PORT} | xargs kill -9" or start on another port with "PORT=5002 npm start"\n`);
+    process.exit(1);
+  } else {
+    console.error(`[SERVER ERROR]`, err);
+  }
+});
+
 // Graceful Shutdown
 const handleShutdown = (signal: string) => {
   console.log(`[SERVER] Received ${signal}. Shutting down gracefully...`);
