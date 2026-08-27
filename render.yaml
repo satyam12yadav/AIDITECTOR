@@ -19,6 +19,8 @@ services:
         value: "*"
       - key: GEMINI_API_KEY
         sync: false
+      - key: EXA_API_KEY
+        sync: false
 
   # ============================================================================
   # 2. Frontend Static Site (React 18 + Vite)
