@@ -273,7 +273,7 @@ export class ExaSearchService {
   /**
    * Calls the live Exa.ai search API
    */
-  private async searchExaApi(query: string, isTemporal: boolean, numResults = 8): Promise<ExaRetrievedSource[]> {
+  private async searchExaApi(query: string, isTemporal: boolean, numResults = 5): Promise<ExaRetrievedSource[]> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8000);
 
@@ -290,10 +290,10 @@ export class ExaSearchService {
           useAutoprompt: true,
           contents: {
             text: {
-              maxCharacters: 1200,
+              maxCharacters: 800,
             },
             highlights: {
-              numSentences: 3,
+              numSentences: 2,
             },
           },
         }),

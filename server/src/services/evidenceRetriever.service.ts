@@ -276,7 +276,7 @@ export class EvidenceRetrieverService {
     queries.add(`${cleaned} fact check`);
     queries.add(`${cleaned} verified`);
 
-    return Array.from(queries).slice(0, 6);
+    return Array.from(queries).slice(0, 4);
   }
 
   /**
@@ -396,54 +396,10 @@ export class EvidenceRetrieverService {
         : []),
     ];
 
-    await Promise.allSettled(batch1Tasks);
-
-    // -------------------------------------------------------------
-    // BATCH 2: Contradiction & Bidirectional Query Search (Requirement 4)
-    // -------------------------------------------------------------
-    const batch2Tasks: Promise<void>[] = [];
+    // BATCH 2: Bidirectional & extra queries — merged into batch1 for speed
     if (searchQueries.length > 1) {
-      batch2Tasks.push(
-        this.searchWeb(searchQueries[1], 4)
-          .then((wrs) => {
-            totalSourcesAttempted += wrs.length;
-            for (const wr of wrs) {
-              const regCheck = sourceRegistry.matchSource(wr.publisher) || sourceRegistry.matchSource(wr.url);
-              const tier = regCheck ? regCheck.credibilityTier : 3;
-              addCandidate({ ...wr, priorityTier: tier });
-            }
-          })
-          .catch(() => {})
-      );
-
-      if (env.EXA_API_KEY) {
-        batch2Tasks.push(
-          exaSearchService
-            .retrieveEvidenceForClaim(searchQueries[1])
-            .then((exaRes) => {
-              totalSourcesAttempted += exaRes.sources.length;
-              for (const src of exaRes.sources) {
-                const regCheck = sourceRegistry.matchSource(src.domain) || sourceRegistry.matchSource(src.url);
-                const tier = regCheck ? regCheck.credibilityTier : 2;
-                addCandidate({
-                  title: src.title || `${searchQueries[1]} reference`,
-                  url: src.url,
-                  publisher: src.domain,
-                  snippet: src.content,
-                  publishedDate: src.publishedDate || null,
-                  priorityTier: tier,
-                  sourceType: 'reference',
-                });
-              }
-            })
-            .catch(() => {})
-        );
-      }
-    }
-
-    if (searchQueries.length > 2) {
-      batch2Tasks.push(
-        this.searchWeb(searchQueries[2], 4)
+      batch1Tasks.push(
+        this.searchWeb(searchQueries[1], 3)
           .then((wrs) => {
             totalSourcesAttempted += wrs.length;
             for (const wr of wrs) {
@@ -457,9 +413,9 @@ export class EvidenceRetrieverService {
     }
 
     if (isInstitutional) {
-      const govQuery = `${primaryQuery} (site:gov.in OR site:nic.in OR site:pib.gov.in OR site:rbi.org.in OR site:who.int OR site:un.org OR site:sci.gov.in)`;
-      batch2Tasks.push(
-        this.searchWeb(govQuery, 4)
+      const govQuery = `${primaryQuery} (site:gov.in OR site:nic.in OR site:pib.gov.in OR site:rbi.org.in OR site:who.int OR site:un.org)`;
+      batch1Tasks.push(
+        this.searchWeb(govQuery, 3)
           .then((grs) => {
             totalSourcesAttempted += grs.length;
             for (const g of grs) {
@@ -470,9 +426,7 @@ export class EvidenceRetrieverService {
       );
     }
 
-    if (batch2Tasks.length > 0) {
-      await Promise.allSettled(batch2Tasks);
-    }
+    await Promise.allSettled(batch1Tasks);
 
     // -------------------------------------------------------------
     // BATCH 3: Targeted Fact-Check Platforms (Alt News, BOOM, PIB, Snopes, etc.)
