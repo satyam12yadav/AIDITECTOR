@@ -15,8 +15,6 @@ import { sourceRegistry } from './sourceRegistry.service.js';
 import { stanceEvaluatorService } from './stanceEvaluator.service.js';
 import { entityExtractorService } from './entityExtractor.service.js';
 import { googleFactCheckService } from './googleFactCheck.service.js';
-import { exaSearchService } from './exaSearch.service.js';
-import { env } from '../config/env.js';
 
 interface RawCandidate {
   title: string;
@@ -369,31 +367,6 @@ export class EvidenceRetrieverService {
           }
         })
         .catch(() => {}),
-
-      // 5. Exa.ai Web Retrieval API (Live neural retrieval)
-      ...(env.EXA_API_KEY
-        ? [
-            exaSearchService
-              .retrieveEvidenceForClaim(primaryQuery)
-              .then((exaRes) => {
-                totalSourcesAttempted += exaRes.sources.length;
-                for (const src of exaRes.sources) {
-                  const regCheck = sourceRegistry.matchSource(src.domain) || sourceRegistry.matchSource(src.url);
-                  const tier = regCheck ? regCheck.credibilityTier : 2;
-                  addCandidate({
-                    title: src.title || `${primaryQuery} reference`,
-                    url: src.url,
-                    publisher: src.domain,
-                    snippet: src.content,
-                    publishedDate: src.publishedDate || null,
-                    priorityTier: tier,
-                    sourceType: 'reference',
-                  });
-                }
-              })
-              .catch(() => {}),
-          ]
-        : []),
     ];
 
     // BATCH 2: Bidirectional & extra queries — merged into batch1 for speed
