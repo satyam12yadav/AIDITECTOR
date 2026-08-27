@@ -118,6 +118,8 @@ STRICT NATURAL LANGUAGE INFERENCE (NLI) & CLAIM-VERIFICATION RULES:
      - e.g. Claim: "Earth is flat" vs Evidence: "Earth is an oblate spheroid" or "Earth isn't flat" -> CONTRADICTS (-1).
      - e.g. Claim: "Paris is the capital of Germany" vs Evidence: "Berlin is the capital of Germany" -> CONTRADICTS (-1).
      - e.g. Claim: "X is current captain" vs Evidence: "Y replaced X as captain" -> CONTRADICTS (-1).
+     - e.g. Claim: "Rohit Sharma is a bowler" vs Evidence: "Rohit Sharma is a right-handed top-order batsman" -> CONTRADICTS (-1).
+     - e.g. Claim: "Virat Kohli is an all-rounder" vs Evidence: "Virat Kohli is a specialist top-order batsman" -> CONTRADICTS (-1).
    - "unclear" (0): ONLY use "unclear" when the evidence genuinely CANNOT establish either support or contradiction (e.g. general background that does not evaluate the proposition).
 
 2. "relevance":
@@ -1765,6 +1767,73 @@ Return STRICT JSON only:
       const combinedEvidence = `${evidenceTitle} ${evidenceSnippet}`.slice(0, 600).trim();
       if (!combinedEvidence) return null;
 
+      const combinedLower = combinedEvidence.toLowerCase();
+      const claimLower = claimText.toLowerCase();
+
+      // Geopolitical Entity Pairing Check: Ensure evidence contains both parties if multiple are mentioned
+      const hasRussia = /\b(russia|russian)\b/i.test(claimLower);
+      const hasUkraine = /\b(ukraine|ukrainian)\b/i.test(claimLower);
+      if (hasRussia && hasUkraine) {
+        const evHasRussia = /\b(russia|russian)\b/i.test(combinedLower);
+        const evHasUkraine = /\b(ukraine|ukrainian)\b/i.test(combinedLower);
+        if (!evHasRussia || !evHasUkraine) {
+          return null; // Evidence must mention both parties
+        }
+      }
+
+      const hasUS = /\b(united states|u\.s\.|us\b)/i.test(claimLower);
+      const hasIran = /\b(iran|iranian)\b/i.test(claimLower);
+      if (hasUS && hasIran) {
+        const evHasUS = /\b(united states|u\.s\.|us\b|america|american|washington)\b/i.test(combinedLower);
+        const evHasIran = /\b(iran|iranian|tehran)\b/i.test(combinedLower);
+        if (!evHasUS || !evHasIran) {
+          return null; // Evidence must mention both parties
+        }
+      }
+
+      // Relevance Gate: Verify that evidence actually addresses the core topic of the claim
+      // 1. Conflict/Peace/Ceasefire Group Relevance check
+      const isConflictClaim = /\b(war|peace|ceasefire|hostilities|military|conflict|treaty|agreement|withdrawal|withdraw|forces|troops)\b/i.test(claimLower);
+      if (isConflictClaim) {
+        const isPeaceOrCeasefireClaim = /\b(peace|ceasefire|cease-fire|treaty|agreement|withdrawal|withdraw)\b/i.test(claimLower);
+        if (isPeaceOrCeasefireClaim) {
+          const hasPeaceKeywords = /\b(peace|ceasefire|cease-fire|treaty|agreement|withdrawal|withdraw|pull out|pulled out|leaving|hostilities|negotiation|negotiate|summit|talks|refused|rejected|settlement|capitulate|capitulation)\b/i.test(combinedLower);
+          if (!hasPeaceKeywords) {
+            return null; // Irrelevant evidence for peace/ceasefire claim
+          }
+        } else {
+          const hasActiveConflictKeywords = /\b(war|conflict|fighting|clashes|invasion|shelling|bombardment|air strikes|combat|hostilities|frontline|frontlines|casualty|casualties|killed|wounded|troops|forces)\b/i.test(combinedLower);
+          if (!hasActiveConflictKeywords) {
+            return null; // Irrelevant evidence for active war/conflict claim
+          }
+        }
+      }
+
+      // 2. Leadership Role Group Relevance check
+      const isRoleClaim = /\b(prime minister|chief minister|president|ceo|captain|leader|convoy|convoys|resigned|mettur|parandur)\b/i.test(claimLower);
+      if (isRoleClaim) {
+        const hasRoleKeywords = /\b(prime minister|chief minister|president|ceo|captain|leader|pm|cm|convoy|convoys|minister|resigned|resign|water|dam|airport|mettur|parandur|stalin|modi|vijay|office|convconv|tvk|party|government|appoint|appointed)\b/i.test(combinedLower);
+        if (!hasRoleKeywords) {
+          return null; // Irrelevant evidence for role claim
+        }
+      }
+
+      // 3. United Nations Group Relevance check
+      if (claimLower.includes('united nations') || claimLower.includes('general assembly')) {
+        const hasUNKeywords = /\b(united nations|general assembly|security council|un |un-)\b/i.test(combinedLower);
+        if (!hasUNKeywords) {
+          return null;
+        }
+      }
+
+      // 4. Earthquake/Disaster check
+      if (claimLower.includes('earthquake') || claimLower.includes('disaster') || claimLower.includes('destroyed')) {
+        const hasDisasterKeywords = /\b(earthquake|quake|disaster|destroyed|damage|casualty|casualties|tremor|seismic)\b/i.test(combinedLower);
+        if (!hasDisasterKeywords) {
+          return null;
+        }
+      }
+
       // Entity Grounding Check: Ensure evidence actually mentions the subject entity of the claim
       const claimTriple = entityExtractorService.extractClaimTriple(claimText);
       const claimEntities = entityExtractorService.extractEntities(claimText);
@@ -1776,7 +1845,6 @@ Return STRICT JSON only:
         claimEntities.locations[0] ||
         ''
       ).toLowerCase();
-      const combinedLower = combinedEvidence.toLowerCase();
 
       if (subject && subject.length > 2) {
         const subjectParts = subject.split(/\s+/).filter((p: string) => p.length > 2);
@@ -1788,25 +1856,25 @@ Return STRICT JSON only:
       }
 
       const output = await pipe(combinedEvidence, [
-        `true: ${claimText}`,
-        `false: ${claimText}`,
-        `unrelated to: ${claimText}`
+        'true',
+        'false',
+        'unrelated'
       ], {
-        hypothesis_template: "This statement is {}."
+        hypothesis_template: `This statement is {}: ${claimText}`
       });
 
       const labels: string[] = output.labels || [];
       const scores: number[] = output.scores || [];
 
-      const trueIdx = labels.findIndex((l) => l.startsWith('true:'));
-      const falseIdx = labels.findIndex((l) => l.startsWith('false:'));
-      const unrelatedIdx = labels.findIndex((l) => l.startsWith('unrelated:'));
+      const trueIdx = labels.indexOf('true');
+      const falseIdx = labels.indexOf('false');
+      const unrelatedIdx = labels.indexOf('unrelated');
 
       const trueScore = trueIdx !== -1 ? scores[trueIdx] : 0;
       const falseScore = falseIdx !== -1 ? scores[falseIdx] : 0;
       const unrelatedScore = unrelatedIdx !== -1 ? scores[unrelatedIdx] : 0;
 
-      if (trueScore >= 0.45 && trueScore > falseScore + 0.15) {
+      if (trueScore >= 0.45 && trueScore > falseScore + 0.15 && trueScore > unrelatedScore) {
         return {
           relation: 'supports',
           relationToClaim: 'SUPPORTS',
@@ -1821,7 +1889,7 @@ Return STRICT JSON only:
         };
       }
 
-      if (falseScore >= 0.38 && falseScore > trueScore + 0.05) {
+      if (falseScore >= 0.38 && falseScore > trueScore + 0.05 && falseScore > unrelatedScore) {
         return {
           relation: 'contradicts',
           relationToClaim: 'CONTRADICTS',

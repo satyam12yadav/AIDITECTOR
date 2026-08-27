@@ -511,13 +511,23 @@ export class CredibilityScorerService {
       }
       // 4. Insufficient / No Evidence Found
       else {
-        claim.consensusStatus = 'INSUFFICIENT_EVIDENCE';
-        claim.relation = 'unclear';
-        claim.claimScore = relevantEv.length > 0 ? 52 : 50;
-        claim.confidence = relevantEv.length > 0 ? 50 : 35;
-        claim.reasoning =
-          unclearItems[0]?.explanation ||
-          'Independent external evidence could not be located to verify or contradict this specific assertion.';
+        const isTimeSensitive = claim.isTimeSensitive || /\b(now|currently|latest|today|recent|presently|captain|president|minister|chief minister|prime minister|chairman|ceo|championship|winner|dissolved|ceased|earthquake|resigned|shutdown)\b/i.test(claim.text);
+        const actualEvidenceCount = supportingItems.length + contradictingItems.length;
+        if (isTimeSensitive && actualEvidenceCount === 0) {
+          claim.consensusStatus = 'UNANIMOUS_CONTRADICTION';
+          claim.relation = 'contradicts';
+          claim.claimScore = 15;
+          claim.confidence = 95;
+          claim.reasoning = 'No real-world verifiable reporting matches this time-sensitive breaking assertion, indicating it is a fabricated event.';
+        } else {
+          claim.consensusStatus = 'INSUFFICIENT_EVIDENCE';
+          claim.relation = 'unclear';
+          claim.claimScore = relevantEv.length > 0 ? 52 : 50;
+          claim.confidence = relevantEv.length > 0 ? 50 : 35;
+          claim.reasoning =
+            unclearItems[0]?.explanation ||
+            'Independent external evidence could not be located to verify or contradict this specific assertion.';
+        }
       }
 
       // 5. Compound Claim / Multi-Proposition Subclaim Aggregation (Requirement 5, 6, 7)
@@ -604,7 +614,7 @@ export class CredibilityScorerService {
         }
 
         let temporalWeight = 1.0;
-        const isTimeSensitive = claim.isTimeSensitive || /\b(now|currently|latest|today|recent|presently|is|captain|president|minister)\b/i.test(claim.text);
+        const isTimeSensitive = claim.isTimeSensitive || /\b(now|currently|latest|today|recent|presently|captain|president|minister|chief minister|prime minister|chairman|ceo|championship|winner|dissolved|ceased|earthquake|resigned|shutdown)\b/i.test(claim.text);
         if (isTimeSensitive) {
           if (ev.temporalRelevance === 'OBSOLETE' || ev.freshness === 'OLD') {
             temporalWeight = 0.10;

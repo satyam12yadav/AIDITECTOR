@@ -490,4 +490,108 @@ describe('🌐 STEP 13: BIDIRECTIONAL EVIDENCE VERIFICATION & CLAIM CLASSIFICATI
     assert.ok(scoreResult.score <= 30, `Expected score <= 30 for replaced captain, got ${scoreResult.score}`);
     assert.strictEqual(extClaim.relation, 'contradicts');
   });
+
+  // Test Case 13: "Rohit Sharma is a bowler." => CONTRADICTED (Score <= 30)
+  it('Test 13: "Rohit Sharma is a bowler." -> CONTRADICTED, LOW credibility (Score <= 30)', () => {
+    const claim = 'Rohit Sharma is a bowler.';
+    const evSnippet =
+      'Rohit Sharma is an Indian international cricketer who plays as a right-handed top-order opening batsman for the Indian national cricket team.';
+    const evTitle = 'Rohit Sharma Profile — ESPNcricinfo';
+
+    const stance = stanceEvaluatorService.evaluateDeterministic(claim, evSnippet, evTitle, false);
+    assert.strictEqual(stance.relation, 'contradicts', 'Should be CONTRADICTED');
+    assert.strictEqual(stance.stanceScore, -1);
+
+    const extClaim: ExtractedClaim = {
+      id: 'cl-13',
+      text: claim,
+      importance: 0.9,
+      claim_type: 'sports_role',
+      classification: 'OBJECTIVE_FACT',
+      isVerifiable: true,
+    };
+
+    const evidence: RetrievedEvidenceItem = {
+      id: 'ev-13',
+      claimId: 'cl-13',
+      sourceName: 'ESPNcricinfo',
+      sourceTier: 1,
+      sourceReliability: 98,
+      title: evTitle,
+      publishedDate: '2026-08-20',
+      evidenceText: evSnippet,
+      relationToClaim: 'CONTRADICTS',
+      relevance: 'direct',
+      confidence: 98,
+      credibilityScore: 98,
+      relevanceScore: 1.0,
+      domain: 'espncricinfo.com',
+      relation: 'contradicts',
+    };
+
+    const articleMeta: ArticleMetadata = {
+      title: 'Cricket Specialisation Claim',
+      author: null,
+      publishedAt: null,
+      publisher: null,
+      url: null,
+      text: claim,
+    };
+
+    const scoreResult = credibilityScorerService.computeCredibilityScore(articleMeta, [extClaim], [evidence]);
+    assert.ok(scoreResult.score <= 30, `Expected score <= 30 for Rohit Sharma bowler claim, got ${scoreResult.score}`);
+    assert.strictEqual(extClaim.relation, 'contradicts');
+  });
+
+  // Test Case 14: "Virat Kohli is an all rounder." => CONTRADICTED (Score <= 30)
+  it('Test 14: "Virat Kohli is an all rounder." -> CONTRADICTED, LOW credibility (Score <= 30)', () => {
+    const claim = 'Virat Kohli is an all rounder.';
+    const evSnippet =
+      'Virat Kohli is an Indian international cricketer who plays as a specialized right-handed top-order batsman.';
+    const evTitle = 'Virat Kohli Profile — ESPNcricinfo';
+
+    const stance = stanceEvaluatorService.evaluateDeterministic(claim, evSnippet, evTitle, false);
+    assert.strictEqual(stance.relation, 'contradicts', 'Should be CONTRADICTED');
+    assert.strictEqual(stance.stanceScore, -1);
+
+    const extClaim: ExtractedClaim = {
+      id: 'cl-14',
+      text: claim,
+      importance: 0.9,
+      claim_type: 'sports_role',
+      classification: 'OBJECTIVE_FACT',
+      isVerifiable: true,
+    };
+
+    const evidence: RetrievedEvidenceItem = {
+      id: 'ev-14',
+      claimId: 'cl-14',
+      sourceName: 'ESPNcricinfo',
+      sourceTier: 1,
+      sourceReliability: 98,
+      title: evTitle,
+      publishedDate: '2026-08-20',
+      evidenceText: evSnippet,
+      relationToClaim: 'CONTRADICTS',
+      relevance: 'direct',
+      confidence: 98,
+      credibilityScore: 98,
+      relevanceScore: 1.0,
+      domain: 'espncricinfo.com',
+      relation: 'contradicts',
+    };
+
+    const articleMeta: ArticleMetadata = {
+      title: 'Cricket Role Claim',
+      author: null,
+      publishedAt: null,
+      publisher: null,
+      url: null,
+      text: claim,
+    };
+
+    const scoreResult = credibilityScorerService.computeCredibilityScore(articleMeta, [extClaim], [evidence]);
+    assert.ok(scoreResult.score <= 30, `Expected score <= 30 for Virat Kohli all rounder claim, got ${scoreResult.score}`);
+    assert.strictEqual(extClaim.relation, 'contradicts');
+  });
 });

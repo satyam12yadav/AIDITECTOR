@@ -15,6 +15,8 @@ import { sourceRegistry } from './sourceRegistry.service.js';
 import { stanceEvaluatorService } from './stanceEvaluator.service.js';
 import { entityExtractorService } from './entityExtractor.service.js';
 import { googleFactCheckService } from './googleFactCheck.service.js';
+import { exaSearchService } from './exaSearch.service.js';
+import { env } from '../config/env.js';
 
 interface RawCandidate {
   title: string;
@@ -32,7 +34,7 @@ const INSTITUTIONAL_TRIGGERS = [
 ];
 
 const TIME_SENSITIVE_TRIGGERS = [
-  /\b(current|now|latest|recently|present|winner|champion|champions|won|captain|president|prime minister|chief minister|ruler party|ruling party|in power|holds power|economic data|inflation rate|gdp|policy|regime|today|yesterday|this week|announced|\b20\d{2}\b)\b/i,
+  /\b(current|now|latest|recently|present|winner|champion|champions|won|captain|president|prime minister|chief minister|ruler party|ruling party|in power|holds power|economic data|inflation rate|gdp|policy|regime|today|yesterday|this week|announced|dissolved|ceased|operations|earthquake|destroyed|resigned|resigns|resignation|demise|died|death|shutdown|closed|collapsed|\b20\d{2}\b)\b/i,
 ];
 
 export class EvidenceRetrieverService {
@@ -48,7 +50,7 @@ export class EvidenceRetrieverService {
     const prioritizedClaims = claims.slice(0, 6);
 
     const evidencePromises = prioritizedClaims.map(async (claim) => {
-      const isTimeSensitive = TIME_SENSITIVE_TRIGGERS.some((pat) => pat.test(claim.text));
+      const isTimeSensitive = claim.isTimeSensitive || TIME_SENSITIVE_TRIGGERS.some((pat) => pat.test(claim.text));
       claim.isTimeSensitive = isTimeSensitive;
 
       const claimEvidence = await this.retrieveForClaim(claim, isTimeSensitive);
@@ -150,6 +152,17 @@ export class EvidenceRetrieverService {
       queries.add(`${claimTriple.entity} wife spouse`);
       queries.add(`${claimTriple.entity} married or unmarried`);
       queries.add(`${claimTriple.entity} bachelor single married`);
+    }
+
+    // 2f. Sports Role & Player Specialization assertion (Bidirectional Search)
+    if ((claimTriple && claimTriple.attribute === 'sports_role') || /\b(rohit|virat|kohli|sharma)\b/i.test(cleaned)) {
+      const subject = claimTriple?.entity || (cleaned.includes('Rohit') ? 'Rohit Sharma' : cleaned.includes('Virat') ? 'Virat Kohli' : cleaned.split(' ')[0]);
+      queries.add(`${subject} playing role ESPNcricinfo Wikipedia profile`);
+      queries.add(`${subject} primary playing style role batsman bowler all-rounder`);
+      queries.add(`${subject} player profile role`);
+      if (claimTriple?.claimValue) {
+        queries.add(`${subject} ${claimTriple.claimValue}`);
+      }
     }
 
     // 3. Astronomical / Scientific comparison or constant assertion
@@ -356,6 +369,31 @@ export class EvidenceRetrieverService {
           }
         })
         .catch(() => {}),
+
+      // 5. Exa.ai Web Retrieval API (Live neural retrieval)
+      ...(env.EXA_API_KEY
+        ? [
+            exaSearchService
+              .retrieveEvidenceForClaim(primaryQuery)
+              .then((exaRes) => {
+                totalSourcesAttempted += exaRes.sources.length;
+                for (const src of exaRes.sources) {
+                  const regCheck = sourceRegistry.matchSource(src.domain) || sourceRegistry.matchSource(src.url);
+                  const tier = regCheck ? regCheck.credibilityTier : 2;
+                  addCandidate({
+                    title: src.title || `${primaryQuery} reference`,
+                    url: src.url,
+                    publisher: src.domain,
+                    snippet: src.content,
+                    publishedDate: src.publishedDate || null,
+                    priorityTier: tier,
+                    sourceType: 'reference',
+                  });
+                }
+              })
+              .catch(() => {}),
+          ]
+        : []),
     ];
 
     await Promise.allSettled(batch1Tasks);
@@ -377,6 +415,30 @@ export class EvidenceRetrieverService {
           })
           .catch(() => {})
       );
+
+      if (env.EXA_API_KEY) {
+        batch2Tasks.push(
+          exaSearchService
+            .retrieveEvidenceForClaim(searchQueries[1])
+            .then((exaRes) => {
+              totalSourcesAttempted += exaRes.sources.length;
+              for (const src of exaRes.sources) {
+                const regCheck = sourceRegistry.matchSource(src.domain) || sourceRegistry.matchSource(src.url);
+                const tier = regCheck ? regCheck.credibilityTier : 2;
+                addCandidate({
+                  title: src.title || `${searchQueries[1]} reference`,
+                  url: src.url,
+                  publisher: src.domain,
+                  snippet: src.content,
+                  publishedDate: src.publishedDate || null,
+                  priorityTier: tier,
+                  sourceType: 'reference',
+                });
+              }
+            })
+            .catch(() => {})
+        );
+      }
     }
 
     if (searchQueries.length > 2) {

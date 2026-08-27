@@ -20,9 +20,9 @@ const parseCorsOrigins = (rawOrigins?: string): string[] => {
 };
 
 export const env: EnvConfig = {
-  PORT: parseInt(process.env.PORT || '5001', 10),
-  NODE_ENV: (process.env.NODE_ENV as EnvConfig['NODE_ENV']) || 'development',
-  CORS_ORIGIN: parseCorsOrigins(process.env.CORS_ORIGIN),
-  EXA_API_KEY: process.env.EXA_API_KEY || '',
-  GEMINI_API_KEY: process.env.GEMINI_API_KEY || '',
+  get PORT() { return parseInt(process.env.PORT || '5001', 10); },
+  get NODE_ENV() { return (process.env.NODE_ENV as EnvConfig['NODE_ENV']) || 'development'; },
+  get CORS_ORIGIN() { return parseCorsOrigins(process.env.CORS_ORIGIN); },
+  get EXA_API_KEY() { return process.env.EXA_API_KEY || ''; },
+  get GEMINI_API_KEY() { return process.env.GEMINI_API_KEY || ''; },
 };

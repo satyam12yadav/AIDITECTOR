@@ -14,6 +14,7 @@ export interface ClaimTriple {
     | 'scientific'
     | 'ruling_party'
     | 'role_holder'
+    | 'sports_role'
     | 'transition'
     | 'winner'
     | 'ownership'
@@ -436,6 +437,26 @@ export class EntityExtractorService {
         holder: subject,
         claimValue: statusVal,
         property: 'marital_status',
+        isNegated: isNeg,
+      };
+    }
+
+    // 3d. Sports Role / Player Specialization Assertion (e.g. "Rohit Sharma is a bowler", "Virat Kohli is an all rounder", "Jasprit Bumrah is a bowler")
+    const sportsRoleMatch = clean.match(/^(?:the\s+)?([a-zA-Z\s.-]+?)\s+(is|was|is not|has never been)\s+(?:currently\s+|now\s+)?(?:a\s+|an\s+)?(?:right-handed\s+|left-handed\s+|top-order\s+|middle-order\s+|opening\s+|specialist\s+|fast\s+|spin\s+|pace\s+)?(bowler|batsman|batter|all-rounder|all rounder|allrounder|wicket-keeper|wicket keeper|keeper-batsman)[.]?$/i);
+    if (sportsRoleMatch) {
+      const subject = sportsRoleMatch[1].trim().replace(/^(the|a|an)\s+/i, '');
+      const verb = sportsRoleMatch[2].toLowerCase();
+      const rawRole = sportsRoleMatch[3].trim().toLowerCase().replace(/\s+/g, '-');
+      const normalizedRole = rawRole === 'all-rounder' || rawRole === 'allrounder' ? 'all-rounder' : rawRole === 'batter' ? 'batsman' : rawRole === 'wicket-keeper' ? 'wicket-keeper' : rawRole;
+      const isNeg = verb.includes('not') || verb.includes('never');
+
+      return {
+        entity: subject,
+        attribute: 'sports_role',
+        holder: subject,
+        claimValue: normalizedRole,
+        role: normalizedRole,
+        property: 'sports_role',
         isNegated: isNeg,
       };
     }

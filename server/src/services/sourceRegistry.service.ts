@@ -211,7 +211,8 @@ export class SourceRegistryService {
       norm.includes('bcci.tv') ||
       norm.includes('icc-cricket.com') ||
       norm.includes('fifa.com') ||
-      norm.includes('olympics.com') ||
+      norm.includes('olympics') ||
+      norm.includes('olympiad') ||
       norm.includes('uefa.com') ||
       norm.includes('fide.com') ||
       norm.includes('rbi.org.in') ||
@@ -222,7 +223,9 @@ export class SourceRegistryService {
       norm.includes('nasa.gov') ||
       norm.includes('nih.gov') ||
       norm.includes('cdc.gov') ||
-      norm.includes('supremecourt')
+      norm.includes('supremecourt') ||
+      norm.includes('pmindia') ||
+      norm.includes('pm india')
     ) {
       return {
         name: norm.includes('bcci') ? 'BCCI' : norm.includes('icc') ? 'ICC' : norm.includes('rbi') ? 'Reserve Bank of India' : norm,
@@ -244,7 +247,12 @@ export class SourceRegistryService {
       norm.includes('factly') ||
       norm.includes('vishvasnews') ||
       norm.includes('newschecker') ||
-      norm.includes('factcheck')
+      norm.includes('factcheck') ||
+      norm.includes('fact crescendo') ||
+      norm.includes('factcrescendo') ||
+      norm.includes('newsmeter') ||
+      norm.includes('news meter') ||
+      norm.includes('youturn')
     ) {
       return {
         name: norm,
@@ -260,18 +268,36 @@ export class SourceRegistryService {
 
     // Tier 2 — Highly Reliable Independent News & Wire Services
     if (
-      norm.includes('reuters.com') ||
-      norm.includes('apnews.com') ||
-      norm.includes('afp.com') ||
-      norm.includes('ptinews.com') ||
-      norm.includes('thehindu.com') ||
-      norm.includes('indianexpress.com') ||
-      norm.includes('bbc.com') ||
-      norm.includes('nytimes.com') ||
-      norm.includes('wsj.com') ||
-      norm.includes('theguardian.com') ||
-      norm.includes('bloomberg.com') ||
-      norm.includes('espncricinfo.com')
+      norm.includes('reuters') ||
+      norm.includes('apnews') ||
+      norm.includes('afp') ||
+      norm.includes('ptinews') ||
+      norm.includes('thehindu') ||
+      norm.includes('indianexpress') ||
+      norm.includes('bbc') ||
+      norm.includes('nytimes') ||
+      norm.includes('wsj') ||
+      norm.includes('theguardian') ||
+      norm.includes('bloomberg') ||
+      norm.includes('espncricinfo') ||
+      norm.includes('hindustantimes') ||
+      norm.includes('hindustan times') ||
+      norm.includes('indiatimes') ||
+      norm.includes('times of india') ||
+      norm.includes('indiatoday') ||
+      norm.includes('india today') ||
+      norm.includes('npr') ||
+      norm.includes('dw.com') ||
+      norm.includes('dw news') ||
+      norm.includes('newsonair') ||
+      norm.includes('news on air') ||
+      norm.includes('al jazeera') ||
+      norm.includes('aljazeera') ||
+      norm.includes('republicworld') ||
+      norm.includes('ani news') ||
+      norm.includes('aninews') ||
+      norm.includes('ndtv') ||
+      norm.includes('cnbc')
     ) {
       return {
         name: norm,

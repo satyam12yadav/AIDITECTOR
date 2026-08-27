@@ -275,7 +275,7 @@ export class ExaSearchService {
    */
   private async searchExaApi(query: string, isTemporal: boolean, numResults = 8): Promise<ExaRetrievedSource[]> {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 5000);
+    const timeout = setTimeout(() => controller.abort(), 8000);
 
     try {
       const response = await fetch('https://api.exa.ai/search', {

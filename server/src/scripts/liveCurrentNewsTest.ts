@@ -326,6 +326,12 @@ async function runLiveNewsPipeline() {
     } else if (supCount > 0 && supCount > conCount) {
       finalStance = 'SUPPORTS';
       countSupports++;
+    } else if (evaluatedClaims.length > 0 && evaluatedClaims[0].relation === 'contradicts') {
+      finalStance = 'CONTRADICTS';
+      countContradicts++;
+    } else if (evaluatedClaims.length > 0 && evaluatedClaims[0].relation === 'supports') {
+      finalStance = 'SUPPORTS';
+      countSupports++;
     } else {
       finalStance = 'UNCLEAR';
       countUnclear++;
